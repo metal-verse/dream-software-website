@@ -4576,27 +4576,51 @@
         return filled;
       }
 
+      // Fire simulation — particles rise from a wide base, tapering toward
+      // the center as they ascend. Each has its own lifetime; on expiry or
+      // drifting above the flame top, the particle respawns at the base.
+      const fireAge    = new Float32Array(PARTICLE_COUNT);
+      const fireMaxAge = new Float32Array(PARTICLE_COUNT);
+      let fireBaseCx = 0, fireBaseY = 0, fireBaseHalfW = 0, fireTopY = 0;
+
+      function _fireRespawn(i) {
+        // Center-biased distribution along base (denser core, thinner edges)
+        const u = Math.random() * 2 - 1;
+        const bias = Math.sign(u) * (1 - Math.pow(1 - Math.abs(u), 1.6));
+        px[i] = fireBaseCx + bias * fireBaseHalfW;
+        py[i] = fireBaseY + (Math.random() - 0.5) * 6;
+        vx[i] = (Math.random() - 0.5) * 50;
+        vy[i] = -(80 + Math.random() * 140);
+        fireAge[i]    = 0;
+        fireMaxAge[i] = 900 + Math.random() * 1400;
+      }
+
       function _forgedInit() {
         const sr = _flowSafeRegion();
         const key = sr.l + ':' + sr.r + ':' + sr.t + ':' + sr.b;
         if (forgedInitialized && key === forgedBoundsKey) return;
         forgedBoundsKey = key;
 
-        const wordPx = _forgedRasterWord(sr);
-        const wordN = wordPx.length / 2;
-        let wc = 0;
+        fireBaseCx    = sr.l + sr.w * 0.5;
+        fireBaseY     = sr.t + sr.h * 0.88;
+        fireBaseHalfW = sr.w * 0.22;
+        fireTopY      = sr.t + sr.h * 0.12;
+
+        // Scatter initial state — stagger ages and pre-rise some particles
+        // so the flame is already in full bloom on the first frame.
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          if (forgedRole[i] !== 0) continue;
-          if (wordN === 0) {
-            forgedAbsX[i] = sr.l + sr.w * 0.5;
-            forgedAbsY[i] = sr.t + sr.h * 0.52;
-          } else {
-            const k = wc % wordN;
-            forgedAbsX[i] = wordPx[k*2];
-            forgedAbsY[i] = wordPx[k*2+1];
-            wc++;
-          }
+          _fireRespawn(i);
+          fireAge[i] = Math.random() * fireMaxAge[i];
+          py[i] -= Math.random() * (fireBaseY - fireTopY);
         }
+        forgedInitialized = true;
+      }
+
+      // Dead code retained below — left intact so existing references in the
+      // file (role arrays, helpers) don't error on load. None of it runs
+      // during FORGED because computeForgedTargets now drives the fire only.
+      function _forgedInit_oldDeadCode_unused() {
+        const sr = _flowSafeRegion();
 
         // Anvil outline — distribute particles by perimeter arc-length.
         const avx = [], avy = [];
@@ -4708,78 +4732,36 @@
 
       function computeForgedTargets(tMs, dt) {
         _forgedInit();
-        const sr = _flowSafeRegion();
 
-        const phase = (tMs % FORGED_CYCLE_MS) / FORGED_CYCLE_MS;
-        const wrapped = phase < forgedPrevPhase;
-        forgedPrevPhase = phase;
-
-        // --- Hammer motion: translation + rotation around a moving pivot ---
-        // raiseT ∈ [0,1]: 0 = hammer at strike position, 1 = hammer at apex.
-        // Both θ and pivot position interpolate with this single parameter,
-        // giving the swing a mechanical-arm feel (shoulder retracts + rotates).
-        // Cycle phases:
-        //   0    – 0.07  impact hold
-        //   0.07 – 0.55  ease-out rise to apex (fast early, slows into apex)
-        //   0.55 – 0.75  hold at apex
-        //   0.75 – 1.0   ease-in cubic fall (slow start, accelerates into strike)
-        const THETA_STRIKE = 0;
-        const THETA_APEX   = -1.85;  // ~-106°, handle swung up-left
-        let raiseT;
-        if (phase < 0.07) {
-          raiseT = 0;
-        } else if (phase < 0.55) {
-          const t = (phase - 0.07) / 0.48;
-          raiseT = 1 - (1 - t) * (1 - t);
-        } else if (phase < 0.75) {
-          raiseT = 1;
-        } else {
-          const t = (phase - 0.75) / 0.25;
-          raiseT = 1 - t * t * t;
-        }
-        const theta   = THETA_STRIKE + (THETA_APEX - THETA_STRIKE) * raiseT;
-        const pivotX  = forgedPivotStrikeX + forgedPivotApexDx * raiseT;
-        const pivotY  = forgedPivotStrikeY + forgedPivotApexDy * raiseT;
-        const cosT = Math.cos(theta), sinT = Math.sin(theta);
-
-        if (wrapped) {
-          for (let i = 0; i < PARTICLE_COUNT; i++) {
-            if (forgedRole[i] !== 3) continue;
-            px[i] = forgedCx + (Math.random() - 0.5) * sr.w * 0.03;
-            py[i] = forgedStrikeY;
-            const angle = -Math.PI * (0.1 + Math.random() * 0.8);
-            const speed = 220 + Math.random() * 380;
-            vx[i] = Math.cos(angle) * speed;
-            vy[i] = Math.sin(angle) * speed;
-          }
-        }
+        const BUOYANCY    = 380;   // upward acceleration (px/s²), fades near top
+        const CENTER_K    = 2.6;   // lateral spring toward flame centerline
+        const NOISE_H     = 420;   // horizontal shimmer
 
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const role = forgedRole[i];
-          if (role === 0 || role === 1) {
-            animTargets[i*2]   = forgedAbsX[i];
-            animTargets[i*2+1] = forgedAbsY[i];
-            flowAlpha[i] = 1;
-          } else if (role === 2) {
-            // Rotate local (lx, ly) around pivot by theta. Write directly to
-            // px/py so the hammer doesn't lag behind via spring — critical for
-            // the head to actually touch the anvil at the strike moment.
-            const lx = forgedAbsX[i], ly = forgedAbsY[i];
-            const wx = pivotX + lx * cosT + ly * sinT;
-            const wy = pivotY - lx * sinT + ly * cosT;
-            px[i] = wx; py[i] = wy;
-            vx[i] = 0; vy[i] = 0;
-            animTargets[i*2]   = wx;
-            animTargets[i*2+1] = wy;
-            flowAlpha[i] = 1;
-          } else {
-            // Spark: gravity accumulates, shared loop integrates position.
-            vy[i] += FORGED_GRAVITY * dt;
-            animTargets[i*2]   = px[i];
-            animTargets[i*2+1] = py[i];
-            const fade = Math.min(1, phase / 0.38);
-            flowAlpha[i] = Math.max(0, 1 - fade);
-          }
+          fireAge[i] += dt * 1000;
+          if (fireAge[i] >= fireMaxAge[i] || py[i] < fireTopY) _fireRespawn(i);
+
+          const h = fireBaseY - fireTopY;
+          const hFrac = Math.max(0, Math.min(1, (fireBaseY - py[i]) / (h || 1)));
+
+          // Buoyancy — strong at base, fades as the particle cools toward the top.
+          vy[i] -= BUOYANCY * (1 - hFrac * 0.6) * dt;
+          // Lateral pull toward centerline, stronger at the top so flame tapers.
+          vx[i] += (fireBaseCx - px[i]) * CENTER_K * (0.3 + hFrac) * dt;
+          // Shimmer
+          vx[i] += (Math.random() - 0.5) * NOISE_H * dt;
+
+          // Neutralize shared spring loop — fire owns position directly.
+          animTargets[i*2]   = px[i];
+          animTargets[i*2+1] = py[i];
+
+          // Lifetime alpha: fast fade-in, plateau, soft fade-out.
+          const lifeT = fireAge[i] / fireMaxAge[i];
+          let a;
+          if (lifeT < 0.08)      a = lifeT / 0.08;
+          else if (lifeT < 0.65) a = 1;
+          else                   a = (1 - lifeT) / 0.35;
+          flowAlpha[i] = Math.max(0, Math.min(1, a));
         }
       }
 
@@ -5081,8 +5063,13 @@
       }
       window.addEventListener('scroll', scheduleSync, { passive: true });
       window.addEventListener('resize', () => {
+        // Mobile can't actually resize; every window.resize event there is
+        // a Safari artifact. Skip the handler entirely on mobile so the
+        // canvas transform is never reshuffled by spurious events. Scroll
+        // remains the sole driver of mobile position updates.
+        if (mqlPhil.matches) return;
         scheduleSync();
-        maybeWebGLResize();
+        resize();
       });
       window.addEventListener('orientationchange', () => {
         // Let the browser settle the new viewport before reading dimensions.
