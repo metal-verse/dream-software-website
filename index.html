@@ -456,17 +456,13 @@
         position: fixed;
         top: auto;
         inset: auto;
-        /* Extend the canvas ~90px below the visual viewport bottom so it
-           covers the area behind Safari's translucent URL bar (text was
-           showing through the sides of the URL pill). The extra bleed is
-           below the viewport — only visible where the URL bar overlaps. */
-        bottom: -90px;
+        bottom: 0;
         left: 0;
         right: 0;
         width: 100vw;
-        height: calc(38vh + 90px);
-        min-height: 350px;
-        max-height: 530px;
+        height: 38vh;
+        min-height: 260px;
+        max-height: 440px;
         z-index: 50;
         pointer-events: none;
         display: block;
@@ -477,6 +473,10 @@
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
+        /* box-shadow extends the charcoal cover 100px below the canvas so the
+           area behind Safari's translucent URL bar is also opaque. The canvas
+           itself stays at 38vh — only the background cover extends. */
+        box-shadow: 0 100px 0 0 rgb(26, 26, 26);
         /* Off-screen below by default — JS takes over on the first scroll event */
         transform: translate3d(0, 100%, 0);
         will-change: transform;
@@ -2476,7 +2476,18 @@
         setTimeout(() => { mouse.x = -1000; mouse.y = -1000; }, 400);
       }, { passive: true });
 
-      window.addEventListener('resize', () => { resize(); });
+      // Only resize the voronoi canvas when the window width actually changes.
+      // Mobile Safari fires window.resize on URL-bar events during scroll;
+      // re-sizing the canvas (and implicitly clearing its buffer) on each of
+      // those events causes compositor thrash that can flicker the fixed
+      // philosophy footer.
+      let _vorLastW = window.innerWidth;
+      window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        if (Math.abs(w - _vorLastW) < 2) return;
+        _vorLastW = w;
+        resize();
+      });
       window.addEventListener('orientationchange', () => { setTimeout(resize, 100); });
 
       resize();
@@ -2802,8 +2813,17 @@
     });
     }
     drawThumbnails();
+    // Only redraw thumbnails when the window actually resizes in a way that
+    // matters. On mobile, window.resize fires on Safari URL-bar events during
+    // scroll even when the bar isn't visibly moving; redrawing these canvases
+    // mid-scroll causes compositor thrash that flickers the philosophy
+    // footer. Gate by actual width change + use orientationchange for mobile.
     let _thumbRaf = 0;
+    let _thumbLastW = window.innerWidth;
     window.addEventListener('resize', () => {
+      const w = window.innerWidth;
+      if (Math.abs(w - _thumbLastW) < 2) return; // not a real resize
+      _thumbLastW = w;
       if (_thumbRaf) return;
       _thumbRaf = requestAnimationFrame(() => { _thumbRaf = 0; drawThumbnails(); });
     });
@@ -4407,13 +4427,14 @@
         ctx.fillStyle = '#fff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        let fs = Math.floor(Math.min(sr.h * 0.20, sr.w * 0.17));
+        const WORD = 'technical art';
+        let fs = Math.floor(Math.min(sr.h * 0.30, sr.w * 0.14));
         ctx.font = `italic 700 ${fs}px 'EB Garamond', Georgia, serif`;
-        while (ctx.measureText('forged').width > off.width * 0.58 && fs > 12) {
+        while (ctx.measureText(WORD).width > off.width * 0.88 && fs > 12) {
           fs -= 2;
           ctx.font = `italic 700 ${fs}px 'EB Garamond', Georgia, serif`;
         }
-        ctx.fillText('forged', off.width * 0.5, off.height * 0.52);
+        ctx.fillText(WORD, off.width * 0.5, off.height * 0.52);
         const img = ctx.getImageData(0, 0, off.width, off.height).data;
         const filled = [];
         for (let y = 0; y < off.height; y += 2) {
@@ -4432,69 +4453,23 @@
         return filled;
       }
 
-      // Fire simulation — multiple flame LICKS arrayed along the base, each
-      // with its own height, width, sway, and intensity. Particles are
-      // permanently assigned to a lick; on respawn they return to their
-      // lick's base. Each lick's centerline sways horizontally at the top
-      // (stationary at the base), giving the characteristic waving motion.
-      const FIRE_LICKS = 7;
-      const fireAge       = new Float32Array(PARTICLE_COUNT);
-      const fireMaxAge    = new Float32Array(PARTICLE_COUNT);
-      const particleLick  = new Int8Array(PARTICLE_COUNT);
-      const lickBaseX     = new Float32Array(FIRE_LICKS);
-      const lickBaseHalfW = new Float32Array(FIRE_LICKS);
-      const lickTopY      = new Float32Array(FIRE_LICKS);
-      const lickSwayAmp   = new Float32Array(FIRE_LICKS);
-      const lickSwayFreq  = new Float32Array(FIRE_LICKS);
-      const lickSwayPhase = new Float32Array(FIRE_LICKS);
-      const lickIntensity = new Float32Array(FIRE_LICKS);
-      let fireBaseY = 0;
-
-      function _firePrepareLicks(sr) {
-        const spread = sr.w * 0.58;
-        const startX = sr.l + (sr.w - spread) * 0.5;
-        const lickStep = spread / Math.max(1, FIRE_LICKS - 1);
-        for (let k = 0; k < FIRE_LICKS; k++) {
-          const u = FIRE_LICKS === 1 ? 0.5 : k / (FIRE_LICKS - 1);
-          // Position with small jitter so licks aren't mechanically uniform.
-          lickBaseX[k]     = startX + u * spread + (Math.random() - 0.5) * lickStep * 0.35;
-          lickBaseHalfW[k] = sr.w * (0.018 + Math.random() * 0.022);
-          // Variable heights — some short flickers, some tall licks.
-          lickTopY[k]      = sr.t + sr.h * (0.08 + Math.random() * 0.40);
-          lickSwayAmp[k]   = sr.w * (0.022 + Math.random() * 0.055);
-          lickSwayFreq[k]  = 0.5 + Math.random() * 1.3;   // Hz
-          lickSwayPhase[k] = Math.random() * Math.PI * 2;
-          lickIntensity[k] = 0.7 + Math.random() * 0.6;
-        }
-        // Particle assignment — weighted by lick volume (height × intensity)
-        // so taller, more intense licks get more particles naturally.
-        const cumulative = new Float32Array(FIRE_LICKS);
-        let total = 0;
-        for (let k = 0; k < FIRE_LICKS; k++) {
-          const reach = (sr.t + sr.h * 0.88) - lickTopY[k];
-          total += Math.max(1, reach) * lickIntensity[k];
-          cumulative[k] = total;
-        }
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const r = Math.random() * total;
-          let k = 0;
-          while (k < FIRE_LICKS - 1 && cumulative[k] < r) k++;
-          particleLick[i] = k;
-        }
-      }
-
-      function _fireRespawn(i) {
-        const k = particleLick[i];
-        // Center-biased along lick base — denser core, thinner edges.
-        const u = Math.random() * 2 - 1;
-        const bias = Math.sign(u) * (1 - Math.pow(1 - Math.abs(u), 1.6));
-        px[i] = lickBaseX[k] + bias * lickBaseHalfW[k];
-        py[i] = fireBaseY + (Math.random() - 0.5) * 6;
-        vx[i] = (Math.random() - 0.5) * 40;
-        vy[i] = -(60 + Math.random() * 130) * lickIntensity[k];
-        fireAge[i]    = 0;
-        fireMaxAge[i] = 700 + Math.random() * 1500;
-      }
+      // "technical art" text shape + occasional pond-ripple disturbance.
+      // Each particle has a stable target sampled from the rasterized word.
+      // A small pool of ripples can be active at once; each ripple expands
+      // outward from a random point on the word and dissipates over ~1.6s.
+      // Particles within the expanding ring get a brief outward impulse,
+      // then spring back to their target positions.
+      const MAX_RIPPLES = 4;
+      const rippleCx     = new Float32Array(MAX_RIPPLES);
+      const rippleCy     = new Float32Array(MAX_RIPPLES);
+      const rippleStart  = new Float32Array(MAX_RIPPLES);
+      const rippleActive = new Uint8Array(MAX_RIPPLES);
+      const RIPPLE_DURATION_MS   = 3800;
+      const RIPPLE_RING_HALF_PX  = 75;
+      const RIPPLE_PEAK_IMPULSE  = 75;   // px/s² — a nudge, not a shove
+      const RIPPLE_MIN_GAP_MS    = 3500;
+      const RIPPLE_MAX_GAP_MS    = 7500;
+      let nextRippleAt = 0;
 
       function _forgedInit() {
         const sr = _flowSafeRegion();
@@ -4502,16 +4477,22 @@
         if (forgedInitialized && key === forgedBoundsKey) return;
         forgedBoundsKey = key;
 
-        fireBaseY = sr.t + sr.h * 0.88;
-        _firePrepareLicks(sr);
-
+        const wordPx = _forgedRasterWord(sr);
+        const wordN = wordPx.length / 2;
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          _fireRespawn(i);
-          fireAge[i] = Math.random() * fireMaxAge[i];
-          // Pre-rise some particles so the flames are in full bloom frame 1
-          const k = particleLick[i];
-          py[i] -= Math.random() * (fireBaseY - lickTopY[k]);
+          if (wordN === 0) {
+            forgedAbsX[i] = sr.l + sr.w * 0.5;
+            forgedAbsY[i] = sr.t + sr.h * 0.5;
+          } else {
+            const k = i % wordN;
+            forgedAbsX[i] = wordPx[k*2];
+            forgedAbsY[i] = wordPx[k*2+1];
+          }
         }
+
+        for (let k = 0; k < MAX_RIPPLES; k++) rippleActive[k] = 0;
+        // First ripple gated ~2.5s after activation so the word has time to converge.
+        nextRippleAt = performance.now() + 2500;
         forgedInitialized = true;
       }
 
@@ -4631,50 +4612,57 @@
 
       function computeForgedTargets(tMs, dt) {
         _forgedInit();
+        const sr = _flowSafeRegion();
+        // Max reach of a ripple — a bit under half the safe-region min dimension
+        // so ripples can visibly cross the word but not fly off-screen.
+        const RIPPLE_MAX_R = Math.min(sr.w, sr.h) * 0.40;
 
-        const BUOYANCY = 380;   // upward accel (px/s²), fades near top
-        const CENTER_K = 3.2;   // lateral spring toward lick's swaying centerline
-        const NOISE_H  = 380;   // horizontal shimmer
-        const tSec = tMs * 0.001;
-
-        // Precompute per-lick sway offset at current time (the top-of-lick
-        // offset; at the base, offset is 0, scaled linearly with height).
-        const lickSwayNow = new Float32Array(FIRE_LICKS);
-        for (let k = 0; k < FIRE_LICKS; k++) {
-          lickSwayNow[k] = Math.sin(tSec * lickSwayFreq[k] * Math.PI * 2 + lickSwayPhase[k]) * lickSwayAmp[k];
+        // Deactivate ripples that have run their course.
+        for (let k = 0; k < MAX_RIPPLES; k++) {
+          if (rippleActive[k] && tMs - rippleStart[k] > RIPPLE_DURATION_MS) {
+            rippleActive[k] = 0;
+          }
         }
 
+        // Occasionally spawn a new ripple at a random word-sample position.
+        if (tMs >= nextRippleAt) {
+          for (let k = 0; k < MAX_RIPPLES; k++) {
+            if (!rippleActive[k]) {
+              const pick = Math.floor(Math.random() * PARTICLE_COUNT);
+              rippleCx[k] = forgedAbsX[pick];
+              rippleCy[k] = forgedAbsY[pick];
+              rippleStart[k] = tMs;
+              rippleActive[k] = 1;
+              nextRippleAt = tMs + RIPPLE_MIN_GAP_MS + Math.random() * (RIPPLE_MAX_GAP_MS - RIPPLE_MIN_GAP_MS);
+              break;
+            }
+          }
+        }
+
+        // Per-particle: target = its stable word sample; ripples apply outward
+        // impulses when their expanding ring is near the particle. The shared
+        // spring then pulls the particle back to its target.
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          fireAge[i] += dt * 1000;
-          const k = particleLick[i];
-          if (fireAge[i] >= fireMaxAge[i] || py[i] < lickTopY[k]) _fireRespawn(i);
+          animTargets[i*2]   = forgedAbsX[i];
+          animTargets[i*2+1] = forgedAbsY[i];
+          flowAlpha[i] = 1;
 
-          const reach = fireBaseY - lickTopY[k];
-          const hFrac = Math.max(0, Math.min(1, (fireBaseY - py[i]) / (reach || 1)));
-
-          // Swaying centerline: rooted at lickBaseX at the base, sways by
-          // lickSwayNow[k] at the top, linear interpolation in between.
-          const centerline = lickBaseX[k] + lickSwayNow[k] * hFrac;
-
-          // Buoyancy — scaled by intensity; fades as particle approaches apex.
-          vy[i] -= BUOYANCY * lickIntensity[k] * (1 - hFrac * 0.55) * dt;
-          // Lateral pull toward centerline (stronger near the top → tapered lick).
-          vx[i] += (centerline - px[i]) * CENTER_K * (0.3 + hFrac) * dt;
-          // Shimmer
-          vx[i] += (Math.random() - 0.5) * NOISE_H * dt;
-
-          // Neutralize shared spring loop — fire owns position directly.
-          animTargets[i*2]   = px[i];
-          animTargets[i*2+1] = py[i];
-
-          // Lifetime alpha, brightness scaled by lick intensity so licks
-          // read as having different strengths.
-          const lifeT = fireAge[i] / fireMaxAge[i];
-          let a;
-          if (lifeT < 0.08)      a = lifeT / 0.08;
-          else if (lifeT < 0.65) a = 1;
-          else                   a = (1 - lifeT) / 0.35;
-          flowAlpha[i] = Math.max(0, Math.min(1, a * lickIntensity[k]));
+          for (let k = 0; k < MAX_RIPPLES; k++) {
+            if (!rippleActive[k]) continue;
+            const dx = px[i] - rippleCx[k];
+            const dy = py[i] - rippleCy[k];
+            const d = Math.hypot(dx, dy) || 0.001;
+            const elapsed = (tMs - rippleStart[k]) / RIPPLE_DURATION_MS; // 0..1
+            const ringR = elapsed * RIPPLE_MAX_R;
+            const ringDist = Math.abs(d - ringR);
+            if (ringDist > RIPPLE_RING_HALF_PX) continue;
+            // Triangular pulse across the ring thickness × time decay
+            const ringProximity = 1 - ringDist / RIPPLE_RING_HALF_PX;
+            const timeDecay = Math.exp(-elapsed * 2.0);
+            const impulse = RIPPLE_PEAK_IMPULSE * ringProximity * timeDecay;
+            vx[i] += (dx / d) * impulse * dt;
+            vy[i] += (dy / d) * impulse * dt;
+          }
         }
       }
 
@@ -4924,10 +4912,6 @@
 
       let _scrollRaf = 0;
       let _lastAppliedOffset = NaN;
-      // The canvas extends BOTTOM_BLEED px below the viewport (covers behind
-      // Safari's translucent URL bar). Subtract that here so "pinned" means
-      // the *visible* canvas top sits at the viewport bottom.
-      const BOTTOM_BLEED = 90;
       function syncCanvasPos() {
         _scrollRaf = 0;
         if (!mqlPhil.matches || !firstPara || !philSection) {
@@ -4936,7 +4920,7 @@
           return;
         }
         const vh = window.innerHeight;
-        const canvasH = canvas.offsetHeight - BOTTOM_BLEED;
+        const canvasH = canvas.offsetHeight;
         const p1Rect = firstPara.getBoundingClientRect();
         const sRect  = philSection.getBoundingClientRect();
 
@@ -4952,9 +4936,8 @@
         }
 
         const offset = Math.round(targetTop - pinTop);
-        // Only write to the style when the value actually changed. Repeated
-        // writes of the same transform cause compositor-layer churn on iOS
-        // and have been contributing to the on-scroll flicker.
+        // Only write the transform when the value actually changed — skipping
+        // redundant writes reduces iOS compositor-layer churn during scroll.
         if (offset !== _lastAppliedOffset) {
           canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
           _lastAppliedOffset = offset;
