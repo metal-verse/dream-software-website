@@ -1318,8 +1318,8 @@
         transition-duration: 0.001ms !important;
         scroll-behavior: auto !important;
       }
-      #voronoi-canvas,
-      #philosophy-canvas { display: none; }
+      /* Particle canvases stay visible — they're JS-driven and are part of
+         the brand feel. The CSS overrides above don't reach their RAF loops. */
     }
     /* iOS auto-zooms into form inputs with font-size < 16px on focus.
        Force 16px on mobile only so the rest of the UI rhythm is preserved. */
@@ -3006,7 +3006,7 @@
 
       const PARTICLE_COUNT = 4000;
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true };
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
@@ -3947,7 +3947,7 @@
         // Reset alpha — FLOW modulates per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         const label = document.getElementById('phil-shape-name');
-        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow' };
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking' };
         if (label) label.textContent = labelMap[word] || word;
       }
 
@@ -4009,6 +4009,8 @@
           computeBrushTargets(t);
         } else if (isAnimated && currentShape === 'FLOW') {
           computeFlowTargets(t);
+        } else if (isAnimated && currentShape === 'ALIVE') {
+          computeAliveTargets(t, dt);
         }
 
         let arrived = 0;
