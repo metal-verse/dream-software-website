@@ -435,7 +435,7 @@
         /* Reserve vertical space below the text so that when the canvas is
            pinned at the viewport bottom, the last paragraph can scroll past
            it without the next section starting too soon. */
-        padding-bottom: calc(38vh + 2rem);
+        padding-bottom: calc(340px + 2rem);
       }
       .philosophy-text {
         margin: 0 auto;
@@ -456,9 +456,9 @@
         left: 0;
         right: 0;
         width: 100vw;
-        height: 38vh;
-        min-height: 260px;
-        max-height: 440px;
+        /* Fixed px height so offsetHeight doesn't drift with URL-bar state
+           and scroll-driven position math stays stable. */
+        height: 340px;
         z-index: 50;
         pointer-events: none;
         display: block;
@@ -469,9 +469,10 @@
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        /* Off-screen below by default — JS takes over on the first scroll event */
+        /* Off-screen below by default — JS takes over on the first scroll event.
+           will-change is intentionally omitted: on iOS Safari, always-on layer
+           promotion can cause occasional 1-frame repaint glitches. */
         transform: translate3d(0, 100%, 0);
-        will-change: transform;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -3011,7 +3012,7 @@
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
         ['code as', 'craft'],
-        ['built with', 'care'],
+        ['ideas', 'made real'],
         ['forged for', 'bold ideas'],
         ['built', 'to last'],
       ];
@@ -3872,6 +3873,313 @@
         }
       }
 
+      // ============================================================
+      // ALIVE — Reynolds boid flock. Birds are agents (V-shape, flapping);
+      // particles render bird wings + an atmosphere that is weakly drawn
+      // toward the word "creative" and pushed aside by passing birds.
+      // ============================================================
+      const ALIVE_BIRDS = 80;
+      const ALIVE_PART_PER_BIRD = 32;
+      const ALIVE_BIRD_TOTAL = ALIVE_BIRDS * ALIVE_PART_PER_BIRD; // 2560
+
+      const ALIVE_SEP_R   = 38;
+      const ALIVE_ALIGN_R = 56;
+      const ALIVE_COH_R   = 68;
+      const ALIVE_W_SEP   = 2.2;
+      const ALIVE_W_ALIGN = 1.0;
+      const ALIVE_W_COH   = 0.8;
+      const ALIVE_W_WANDER = 0.35;
+      const ALIVE_MAX_SPEED = 170;
+      const ALIVE_MIN_SPEED = 90;
+      const ALIVE_MAX_FORCE = 520;
+      const ALIVE_EDGE_PAD  = 48;
+      const ALIVE_EDGE_FORCE = 900;
+      const ALIVE_FLAP_HZ_MIN = 5.5;
+      const ALIVE_FLAP_HZ_MAX = 7.5;
+
+      const birdX   = new Float32Array(ALIVE_BIRDS);
+      const birdY   = new Float32Array(ALIVE_BIRDS);
+      const birdVx  = new Float32Array(ALIVE_BIRDS);
+      const birdVy  = new Float32Array(ALIVE_BIRDS);
+      const birdFlapHz    = new Float32Array(ALIVE_BIRDS);
+      const birdFlapPhase = new Float32Array(ALIVE_BIRDS);
+      let aliveInitialized = false;
+
+      // Bird-particle role: 0 left-inner, 1 left-outer, 2 right-inner, 3 right-outer
+      const aliveBirdIdx   = new Int16Array(PARTICLE_COUNT);
+      const aliveWingRole  = new Int8Array(PARTICLE_COUNT);
+      const aliveWingU     = new Float32Array(PARTICLE_COUNT);
+      const aliveWingJ     = new Float32Array(PARTICLE_COUNT);
+      // Group flag: 0=bird, 1=word, 2=atmosphere
+      const aliveGroup     = new Uint8Array(PARTICLE_COUNT);
+      // Word particles store a stable index into sample array (as u ∈ [0,1))
+      const aliveWordU     = new Float32Array(PARTICLE_COUNT);
+
+      // Word particles: strong pull toward their designated sample of "creative",
+      // tiny bird push for liveliness noise.
+      const ALIVE_WORD_SPRING  = 14;
+      const ALIVE_WORD_DAMP    = 3.5;
+      const ALIVE_WORD_PUSH_R  = 26;
+      const ALIVE_WORD_PUSH_K  = 28;   // minimal — just enough to jitter the word
+      const ALIVE_WORD_NOISE   = 6;
+
+      // Atmosphere: pushed strongly by birds, no word attraction, damped drift.
+      const ALIVE_ATMO_DAMP    = 1.4;
+      const ALIVE_ATMO_PUSH_R  = 42;
+      const ALIVE_ATMO_PUSH_K  = 260;
+      const ALIVE_ATMO_NOISE   = 26;
+      const ALIVE_ATMO_CENTER_K = 0.25; // very weak pull back to safe-region center (so they don't pile at edges)
+
+      // Particle split within the non-bird remainder (1440 total)
+      const ALIVE_WORD_COUNT = 1100;
+      const ALIVE_ATMO_COUNT_MAX = PARTICLE_COUNT; // rest
+
+      // Rasterized "creative" sample points — particles pull toward these.
+      let aliveAttractSamples = null;
+      let aliveAttractBoundsKey = '';
+      function _aliveRasterizeCreative() {
+        const sr = _flowSafeRegion();
+        const key = sr.l + ':' + sr.r + ':' + sr.t + ':' + sr.b;
+        if (key === aliveAttractBoundsKey && aliveAttractSamples) return;
+        aliveAttractBoundsKey = key;
+        const off = document.createElement('canvas');
+        off.width = Math.max(1, Math.floor(sr.w));
+        off.height = Math.max(1, Math.floor(sr.h));
+        const ctx = off.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        let fs = Math.floor(sr.h * 0.55);
+        ctx.font = `italic 600 ${fs}px 'EB Garamond', Georgia, serif`;
+        while (ctx.measureText('creative').width > off.width * 0.86 && fs > 12) {
+          fs -= 4;
+          ctx.font = `italic 600 ${fs}px 'EB Garamond', Georgia, serif`;
+        }
+        ctx.fillText('creative', off.width / 2, off.height / 2);
+        const img = ctx.getImageData(0, 0, off.width, off.height).data;
+        const filled = [];
+        for (let y = 0; y < off.height; y += 2) {
+          for (let x = 0; x < off.width; x += 2) {
+            if (img[(y * off.width + x) * 4 + 3] > 128) filled.push(sr.l + x, sr.t + y);
+          }
+        }
+        if (filled.length === 0) {
+          aliveAttractSamples = new Float32Array([sr.l + sr.w / 2, sr.t + sr.h / 2]);
+        } else {
+          aliveAttractSamples = new Float32Array(filled);
+        }
+      }
+
+      (function assignAliveRoles() {
+        let idx = 0;
+        const halfBand = ALIVE_PART_PER_BIRD / 2;
+        const quarterBand = ALIVE_PART_PER_BIRD / 4;
+        for (let b = 0; b < ALIVE_BIRDS; b++) {
+          for (let k = 0; k < ALIVE_PART_PER_BIRD; k++, idx++) {
+            aliveBirdIdx[idx] = b;
+            aliveGroup[idx] = 0; // bird
+            const side = k < halfBand ? 0 : 2;
+            const halfK = k % halfBand;
+            const innerHalf = halfK < quarterBand;
+            aliveWingRole[idx] = side + (innerHalf ? 0 : 1);
+            aliveWingU[idx] = innerHalf
+              ? (halfK / (quarterBand - 1 || 1)) * 0.5
+              : 0.5 + ((halfK - quarterBand) / (quarterBand - 1 || 1)) * 0.5;
+            aliveWingJ[idx] = (Math.random() - 0.5) * 1.2;
+          }
+        }
+        const wordEnd = Math.min(PARTICLE_COUNT, idx + ALIVE_WORD_COUNT);
+        for (; idx < wordEnd; idx++) {
+          aliveBirdIdx[idx] = -1;
+          aliveGroup[idx] = 1; // word
+          aliveWordU[idx] = Math.random();
+        }
+        for (; idx < PARTICLE_COUNT; idx++) {
+          aliveBirdIdx[idx] = -1;
+          aliveGroup[idx] = 2; // atmosphere
+        }
+      })();
+
+      function _aliveInit() {
+        const sr = _flowSafeRegion();
+        for (let b = 0; b < ALIVE_BIRDS; b++) {
+          birdX[b] = sr.l + Math.random() * sr.w;
+          birdY[b] = sr.t + Math.random() * sr.h;
+          const a = Math.random() * Math.PI * 2;
+          const sp = ALIVE_MIN_SPEED + Math.random() * (ALIVE_MAX_SPEED - ALIVE_MIN_SPEED);
+          birdVx[b] = Math.cos(a) * sp;
+          birdVy[b] = Math.sin(a) * sp;
+          birdFlapHz[b] = ALIVE_FLAP_HZ_MIN + Math.random() * (ALIVE_FLAP_HZ_MAX - ALIVE_FLAP_HZ_MIN);
+          birdFlapPhase[b] = Math.random() * Math.PI * 2;
+        }
+        // Seed word particles near their target samples (so they converge into the word fast).
+        // Seed atmosphere across the safe region.
+        _aliveRasterizeCreative();
+        const samples = aliveAttractSamples;
+        const sampleN = samples ? samples.length / 2 : 0;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const g = aliveGroup[i];
+          if (g === 1 && sampleN > 0) {
+            const k = Math.floor(aliveWordU[i] * sampleN);
+            px[i] = samples[k*2] + (Math.random() - 0.5) * 6;
+            py[i] = samples[k*2+1] + (Math.random() - 0.5) * 6;
+            vx[i] = 0; vy[i] = 0;
+          } else if (g === 2) {
+            px[i] = sr.l + Math.random() * sr.w;
+            py[i] = sr.t + Math.random() * sr.h;
+            vx[i] = (Math.random() - 0.5) * 40;
+            vy[i] = (Math.random() - 0.5) * 40;
+          }
+        }
+        aliveInitialized = true;
+      }
+
+      function computeAliveTargets(tMs, dt) {
+        if (!aliveInitialized) _aliveInit();
+        _aliveRasterizeCreative();
+        const sr = _flowSafeRegion();
+
+        // --- 1. Boid physics update for each bird ---
+        for (let i = 0; i < ALIVE_BIRDS; i++) {
+          let sepX = 0, sepY = 0, sepN = 0;
+          let aliX = 0, aliY = 0, aliN = 0;
+          let cohX = 0, cohY = 0, cohN = 0;
+          const ix = birdX[i], iy = birdY[i];
+          for (let j = 0; j < ALIVE_BIRDS; j++) {
+            if (j === i) continue;
+            const dx = birdX[j] - ix, dy = birdY[j] - iy;
+            const d2 = dx*dx + dy*dy;
+            if (d2 > ALIVE_COH_R * ALIVE_COH_R) continue;
+            const d = Math.sqrt(d2) || 0.001;
+            if (d < ALIVE_SEP_R) { sepX -= dx / d; sepY -= dy / d; sepN++; }
+            if (d < ALIVE_ALIGN_R) { aliX += birdVx[j]; aliY += birdVy[j]; aliN++; }
+            cohX += birdX[j]; cohY += birdY[j]; cohN++;
+          }
+          let fx = 0, fy = 0;
+          if (sepN > 0) {
+            fx += (sepX / sepN) * ALIVE_W_SEP * ALIVE_MAX_FORCE;
+            fy += (sepY / sepN) * ALIVE_W_SEP * ALIVE_MAX_FORCE;
+          }
+          if (aliN > 0) {
+            const ax = aliX / aliN, ay = aliY / aliN;
+            const am = Math.hypot(ax, ay) || 0.001;
+            fx += ((ax / am) * ALIVE_MAX_SPEED - birdVx[i]) * ALIVE_W_ALIGN;
+            fy += ((ay / am) * ALIVE_MAX_SPEED - birdVy[i]) * ALIVE_W_ALIGN;
+          }
+          if (cohN > 0) {
+            fx += (cohX / cohN - ix) * ALIVE_W_COH;
+            fy += (cohY / cohN - iy) * ALIVE_W_COH;
+          }
+          fx += (Math.random() - 0.5) * 2 * ALIVE_W_WANDER * ALIVE_MAX_FORCE;
+          fy += (Math.random() - 0.5) * 2 * ALIVE_W_WANDER * ALIVE_MAX_FORCE;
+          if (ix < sr.l + ALIVE_EDGE_PAD) fx += ALIVE_EDGE_FORCE * (1 - (ix - sr.l) / ALIVE_EDGE_PAD);
+          if (ix > sr.r - ALIVE_EDGE_PAD) fx -= ALIVE_EDGE_FORCE * (1 - (sr.r - ix) / ALIVE_EDGE_PAD);
+          if (iy < sr.t + ALIVE_EDGE_PAD) fy += ALIVE_EDGE_FORCE * (1 - (iy - sr.t) / ALIVE_EDGE_PAD);
+          if (iy > sr.b - ALIVE_EDGE_PAD) fy -= ALIVE_EDGE_FORCE * (1 - (sr.b - iy) / ALIVE_EDGE_PAD);
+          const fm2 = fx*fx + fy*fy;
+          if (fm2 > ALIVE_MAX_FORCE * ALIVE_MAX_FORCE) {
+            const fm = Math.sqrt(fm2);
+            fx *= ALIVE_MAX_FORCE / fm;
+            fy *= ALIVE_MAX_FORCE / fm;
+          }
+          birdVx[i] += fx * dt;
+          birdVy[i] += fy * dt;
+          const vm2 = birdVx[i]*birdVx[i] + birdVy[i]*birdVy[i];
+          if (vm2 > ALIVE_MAX_SPEED * ALIVE_MAX_SPEED) {
+            const vm = Math.sqrt(vm2);
+            birdVx[i] *= ALIVE_MAX_SPEED / vm;
+            birdVy[i] *= ALIVE_MAX_SPEED / vm;
+          } else if (vm2 < ALIVE_MIN_SPEED * ALIVE_MIN_SPEED) {
+            const vm = Math.sqrt(vm2) || 0.001;
+            birdVx[i] *= ALIVE_MIN_SPEED / vm;
+            birdVy[i] *= ALIVE_MIN_SPEED / vm;
+          }
+          birdX[i] += birdVx[i] * dt;
+          birdY[i] += birdVy[i] * dt;
+          if (birdX[i] < sr.l) birdX[i] = sr.l;
+          if (birdX[i] > sr.r) birdX[i] = sr.r;
+          if (birdY[i] < sr.t) birdY[i] = sr.t;
+          if (birdY[i] > sr.b) birdY[i] = sr.b;
+        }
+
+        // --- 2. Bird wing particle targets ---
+        // Deeper V: wings sweep much further backward, shorter horizontally.
+        // Larger flap amplitude so it's actually visible.
+        const birdScale = Math.max(7, Math.min(sr.w, sr.h) * 0.022);
+        const FLAP_AMP = 0.45;
+        const WING_BASE_ANGLE = Math.PI * 0.72;   // ~130° back from forward
+        const WING_LEN_INNER = birdScale * 0.55;
+        const WING_LEN_OUTER = birdScale * 1.15;
+        const baseCos = Math.cos(WING_BASE_ANGLE);
+        const baseSin = Math.sin(WING_BASE_ANGLE);
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          if (aliveGroup[i] !== 0) continue;
+          const b = aliveBirdIdx[i];
+          const bx = birdX[b], by = birdY[b];
+          const vxb = birdVx[b], vyb = birdVy[b];
+          const vm = Math.hypot(vxb, vyb) || 0.001;
+          const fdx = vxb / vm, fdy = vyb / vm;
+          const ppx = -fdy, ppy = fdx;
+          const flap = Math.sin(tMs * 0.001 * birdFlapHz[b] * Math.PI * 2 + birdFlapPhase[b]) * FLAP_AMP;
+          const role = aliveWingRole[i];
+          const u = aliveWingU[i];
+          const isLeft = role < 2;
+          const isInner = (role & 1) === 0;
+          const sign = isLeft ? 1 : -1;
+          const flapMod = 1 + flap * sign * 0.4;
+          const L = isInner
+            ? u * WING_LEN_INNER
+            : WING_LEN_INNER + (u - 0.5) * 2 * (WING_LEN_OUTER - WING_LEN_INNER);
+          const along = baseCos * L;
+          const across = baseSin * L * sign * flapMod;
+          const tx = bx + fdx * along + ppx * across + ppx * aliveWingJ[i] * 0.6;
+          const ty = by + fdy * along + ppy * across + ppy * aliveWingJ[i] * 0.6;
+          animTargets[i*2]   = tx;
+          animTargets[i*2+1] = ty;
+          flowAlpha[i] = 1;
+        }
+
+        // --- 3. Atmosphere particles: integrate directly, pull toward
+        //         "creative" samples, push away from nearby birds.
+        //         Neutralize the shared spring by setting target = current pos.
+        const samples = aliveAttractSamples;
+        const sampleN = samples ? samples.length / 2 : 0;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          if (!atmoAssigned[i]) continue;
+          let ax = 0, ay = 0;
+          if (sampleN > 0) {
+            const si = ((i * 2654435761) ^ ((tMs * 0.013) | 0)) >>> 0;
+            const k = si % sampleN;
+            ax += (samples[k*2]   - px[i]) * ALIVE_ATMO_PULL_K;
+            ay += (samples[k*2+1] - py[i]) * ALIVE_ATMO_PULL_K;
+          }
+          for (let b = 0; b < ALIVE_BIRDS; b++) {
+            const dx = px[i] - birdX[b], dy = py[i] - birdY[b];
+            const d2 = dx*dx + dy*dy;
+            if (d2 > ALIVE_ATMO_PUSH_R * ALIVE_ATMO_PUSH_R) continue;
+            const d = Math.sqrt(d2) || 0.001;
+            const f = (1 - d / ALIVE_ATMO_PUSH_R) * ALIVE_ATMO_PUSH_K;
+            ax += (dx / d) * f;
+            ay += (dy / d) * f;
+          }
+          ax += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
+          ay += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
+          vx[i] += ax * dt;
+          vy[i] += ay * dt;
+          vx[i] *= Math.exp(-ALIVE_ATMO_DAMP * dt);
+          vy[i] *= Math.exp(-ALIVE_ATMO_DAMP * dt);
+          px[i] += vx[i] * dt;
+          py[i] += vy[i] * dt;
+          if (px[i] < sr.l) { px[i] = sr.l; vx[i] *= -0.4; }
+          if (px[i] > sr.r) { px[i] = sr.r; vx[i] *= -0.4; }
+          if (py[i] < sr.t) { py[i] = sr.t; vy[i] *= -0.4; }
+          if (py[i] > sr.b) { py[i] = sr.b; vy[i] *= -0.4; }
+          animTargets[i*2]   = px[i];
+          animTargets[i*2+1] = py[i];
+          flowAlpha[i] = 0.55;
+        }
+      }
+
       // --- GL setup ---
       const vs = `
         attribute vec2 aPos;
@@ -3944,8 +4252,9 @@
         } else {
           targets = sampleShape(word);
         }
-        // Reset alpha — FLOW modulates per frame; everything else is fully opaque.
+        // Reset alpha — FLOW/ALIVE modulate per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
+        if (word === 'ALIVE') aliveInitialized = false;
         const label = document.getElementById('phil-shape-name');
         const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking' };
         if (label) label.textContent = labelMap[word] || word;
@@ -4098,41 +4407,74 @@
       const firstPara = philText ? philText.querySelector(':scope > p:first-of-type') : null;
       const mqlPhil = window.matchMedia('(max-width: 880px)');
 
+      // Canvas mode: 'flow' = tracking p1 (sliding in), 'pinned' = at viewport
+      // bottom, 'anchor' = riding out with section bottom. We keep the current
+      // mode and only switch when the crossover exceeds HYSTERESIS_PX — that
+      // kills the pin/anchor flip when vh wobbles by a pixel or two during
+      // Safari's URL-bar animation.
+      const HYSTERESIS_PX = 10;
+      const OFFSCREEN_MARGIN_PX = 60; // skip work when canvas can't be visible
+      let _canvasMode = 'flow';
+      let _lastAppliedOffset = NaN;
       let _scrollRaf = 0;
+      // visualViewport is more stable during Safari chrome animation than
+      // window.innerHeight, which transitions smoothly as the URL bar moves.
+      const vvp = window.visualViewport || null;
+
       function syncCanvasPos() {
         _scrollRaf = 0;
         if (!mqlPhil.matches || !firstPara || !philSection) {
-          canvas.style.transform = '';
+          if (canvas.style.transform) canvas.style.transform = '';
+          _canvasMode = 'flow';
+          _lastAppliedOffset = NaN;
           return;
         }
-        const vh = window.innerHeight;
-        const canvasH = canvas.offsetHeight;       // matches the 38vh mobile rule
-        const p1Rect = firstPara.getBoundingClientRect();
+        const vh = vvp ? vvp.height : window.innerHeight;
+        const canvasH = canvas.offsetHeight; // now a fixed 340px
         const sRect  = philSection.getBoundingClientRect();
 
-        // Where we'd like the canvas's top to sit (just below p1, like it's
-        // the next thing in flow).
-        const flowTop = p1Rect.bottom + 16;
-        // Lowest allowed canvas-top while pinned — bottom of viewport minus
-        // its own height puts the canvas flush with the viewport bottom.
-        const pinTop = vh - canvasH;
-        // As the section ends, anchor the canvas's bottom to the section's
-        // bottom so it rides out.
-        const sectionAnchorTop = sRect.bottom - canvasH;
-
-        let targetTop;
-        if (flowTop > pinTop) {
-          // Canvas hasn't fully scrolled into viewport yet — follow p1.
-          targetTop = flowTop;
-        } else {
-          // Pinned or riding out with the section.
-          targetTop = Math.min(pinTop, sectionAnchorTop);
+        // Short-circuit: section fully off-screen. Park the canvas offscreen
+        // and bail — no reads, no math, no layer churn.
+        if (sRect.bottom < -OFFSCREEN_MARGIN_PX || sRect.top > vh + OFFSCREEN_MARGIN_PX) {
+          const offOffset = canvasH + 40;
+          if (_lastAppliedOffset !== offOffset) {
+            canvas.style.transform = `translate3d(0, ${offOffset}px, 0)`;
+            _lastAppliedOffset = offOffset;
+          }
+          return;
         }
 
-        // Canvas's CSS rule places it at viewport bottom (top = pinTop).
-        // Translate from there to the desired position.
-        const offset = targetTop - pinTop;
-        canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
+        const p1Rect = firstPara.getBoundingClientRect();
+        const flowTop = p1Rect.bottom + 16;
+        const pinTop = vh - canvasH;
+        const sectionAnchorTop = sRect.bottom - canvasH;
+
+        // Mode decision with hysteresis. Switch only when the new mode's
+        // position differs from the current by more than HYSTERESIS_PX.
+        let nextMode = _canvasMode;
+        if (flowTop > pinTop + HYSTERESIS_PX) {
+          nextMode = 'flow';
+        } else if (flowTop < pinTop - HYSTERESIS_PX) {
+          // Past the flow-in phase: choose between pinned and anchor.
+          if (sectionAnchorTop < pinTop - HYSTERESIS_PX) {
+            nextMode = 'anchor';
+          } else if (sectionAnchorTop > pinTop + HYSTERESIS_PX) {
+            nextMode = 'pinned';
+          }
+          // Otherwise stay in whichever of pinned/anchor we were in.
+        }
+        _canvasMode = nextMode;
+
+        let targetTop;
+        if (_canvasMode === 'flow')         targetTop = flowTop;
+        else if (_canvasMode === 'anchor')  targetTop = sectionAnchorTop;
+        else                                targetTop = pinTop;
+
+        const offset = Math.round(targetTop - pinTop);
+        if (offset !== _lastAppliedOffset) {
+          canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
+          _lastAppliedOffset = offset;
+        }
       }
       function scheduleSync() {
         if (_scrollRaf) return;
@@ -4143,6 +4485,12 @@
         scheduleSync();
         if (typeof resize === 'function') resize();
       });
+      if (vvp) {
+        // Safari URL-bar animation fires these; keep our position synced
+        // without waiting for the next scroll event.
+        vvp.addEventListener('resize', scheduleSync);
+        vvp.addEventListener('scroll', scheduleSync);
+      }
       mqlPhil.addEventListener('change', () => {
         if (typeof resize === 'function') resize();
         scheduleSync();
