@@ -1603,7 +1603,7 @@
         <p>
           We believe code is a <strong class="phrase-trigger" data-shape="ALIVE">creative medium</strong> — as expressive as paint, as
           precise as engineering, as alive as a physics simulation. The best software doesn't
-          just function. It <em class="phrase-trigger" data-shape="ARTWORKS">moves people</em>.
+          just function. It <em class="phrase-trigger" data-shape="GLOBE">moves people</em>.
         </p>
         <p>
           That's what Dream Software builds. <strong class="phrase-trigger" data-shape="FLOW">Software worth looking at. Software worth
@@ -2076,8 +2076,9 @@
     </div>
   </footer>
 
-  <!-- ===== ARTWORK BITMAPS (used by the philosophy "moves people" animation) ===== -->
-  <script src="assets/artwork-bitmaps.js"></script>
+
+  <!-- ===== GLOBE COASTLINES (bundled Natural Earth 110m land data) ===== -->
+  <script src="assets/globe-coastlines.js"></script>
 
   <!-- ===== VORONOI PARTICLE SIMULATION ===== -->
   <script>
@@ -3063,7 +3064,7 @@
 
       const PARTICLE_COUNT = 4000;
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true, ARTWORKS: true };
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true, GLOBE: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
@@ -3758,120 +3759,297 @@
         };
       }
 
-      // ===== ARTWORKS — iconic artwork coalescence (weighted by bitmap intensity) =====
-      // Particles coalesce into iconic artwork pixel distributions loaded from the bundled
-      // bitmap file. Dark pixels of the source painting attract more particles, producing a
-      // tonal reconstruction rather than a silhouette. Artworks cycle every few seconds.
-      const ARTWORK_HOLD_MS = 4500;
-      const ARTWORKS = [
-        { key: 'wave',         label: 'Hokusai — Great Wave' },
-        { key: 'starry-night', label: 'Van Gogh — Starry Night' },
-        { key: 'scream',       label: 'Munch — The Scream' },
-        { key: 'vitruvian',    label: 'Da Vinci — Vitruvian Man' },
+      // ===== GLOBE — slowly rotating Earth with cities + population flow =====
+      // Orthographic 3D sphere (math CPU-side, output projected to 2D). Each particle
+      // is a "resident" of some city; periodically a batch is reassigned to travel along
+      // a great-circle arc to a new city. On arrival they join the destination cluster.
+      // Cluster visual radius scales with sqrt(resident count) so arrivals visibly grow a city.
+      const GLOBE_ROTATION_PERIOD_MS = 90000;   // ~90s per revolution (slow)
+      const GLOBE_TRAVEL_DURATION_MS = 4200;    // ~4s per city-to-city journey
+      const GLOBE_FLOW_INTERVAL_MS   = 1700;    // reassign particles every ~1.7s
+      const GLOBE_FLOW_BATCH_SIZE    = 55;
+
+      // Curated cities — name, latitude, longitude (degrees), population scale (1..4)
+      const CITIES = [
+        { name: 'Tokyo',           lat:  35.68, lon:  139.69, scale: 4 },
+        { name: 'Delhi',           lat:  28.70, lon:   77.10, scale: 4 },
+        { name: 'Shanghai',        lat:  31.23, lon:  121.47, scale: 4 },
+        { name: 'Beijing',         lat:  39.90, lon:  116.41, scale: 4 },
+        { name: 'Mumbai',          lat:  19.08, lon:   72.88, scale: 4 },
+        { name: 'Karachi',         lat:  24.86, lon:   67.01, scale: 4 },
+        { name: 'Dhaka',           lat:  23.81, lon:   90.41, scale: 4 },
+        { name: 'Jakarta',         lat:  -6.21, lon:  106.85, scale: 4 },
+        { name: 'Manila',          lat:  14.60, lon:  120.98, scale: 4 },
+        { name: 'Seoul',           lat:  37.57, lon:  126.98, scale: 4 },
+        { name: 'Cairo',           lat:  30.04, lon:   31.24, scale: 4 },
+        { name: 'Lagos',           lat:   6.52, lon:    3.38, scale: 4 },
+        { name: 'Istanbul',        lat:  41.01, lon:   28.98, scale: 4 },
+        { name: 'Moscow',          lat:  55.76, lon:   37.62, scale: 4 },
+        { name: 'London',          lat:  51.51, lon:   -0.13, scale: 4 },
+        { name: 'Mexico City',     lat:  19.43, lon:  -99.13, scale: 4 },
+        { name: 'New York',        lat:  40.71, lon:  -74.01, scale: 4 },
+        { name: 'Sao Paulo',       lat: -23.55, lon:  -46.63, scale: 4 },
+        { name: 'Los Angeles',     lat:  34.05, lon: -118.24, scale: 3 },
+        { name: 'Chicago',         lat:  41.88, lon:  -87.63, scale: 3 },
+        { name: 'Toronto',         lat:  43.65, lon:  -79.38, scale: 3 },
+        { name: 'San Francisco',   lat:  37.77, lon: -122.42, scale: 3 },
+        { name: 'Rio de Janeiro',  lat: -22.91, lon:  -43.17, scale: 3 },
+        { name: 'Buenos Aires',    lat: -34.60, lon:  -58.38, scale: 3 },
+        { name: 'Lima',            lat: -12.05, lon:  -77.04, scale: 3 },
+        { name: 'Bogota',          lat:   4.71, lon:  -74.07, scale: 3 },
+        { name: 'Paris',           lat:  48.86, lon:    2.35, scale: 3 },
+        { name: 'Madrid',          lat:  40.42, lon:   -3.70, scale: 3 },
+        { name: 'Rome',            lat:  41.90, lon:   12.50, scale: 3 },
+        { name: 'Berlin',          lat:  52.52, lon:   13.40, scale: 3 },
+        { name: 'Johannesburg',    lat: -26.20, lon:   28.05, scale: 3 },
+        { name: 'Nairobi',         lat:  -1.29, lon:   36.82, scale: 3 },
+        { name: 'Addis Ababa',     lat:   9.03, lon:   38.74, scale: 3 },
+        { name: 'Dubai',           lat:  25.20, lon:   55.27, scale: 3 },
+        { name: 'Riyadh',          lat:  24.71, lon:   46.68, scale: 3 },
+        { name: 'Tehran',          lat:  35.69, lon:   51.39, scale: 3 },
+        { name: 'Kolkata',         lat:  22.57, lon:   88.36, scale: 3 },
+        { name: 'Lahore',          lat:  31.55, lon:   74.34, scale: 3 },
+        { name: 'Bangkok',         lat:  13.75, lon:  100.50, scale: 3 },
+        { name: 'Ho Chi Minh',     lat:  10.82, lon:  106.63, scale: 3 },
+        { name: 'Singapore',       lat:   1.35, lon:  103.82, scale: 3 },
+        { name: 'Hong Kong',       lat:  22.28, lon:  114.16, scale: 3 },
+        { name: 'Taipei',          lat:  25.03, lon:  121.57, scale: 3 },
+        { name: 'Osaka',           lat:  34.69, lon:  135.50, scale: 3 },
+        { name: 'Sydney',          lat: -33.87, lon:  151.21, scale: 3 },
+        { name: 'Melbourne',       lat: -37.81, lon:  144.96, scale: 3 },
+        { name: 'Santiago',        lat: -33.45, lon:  -70.67, scale: 2 },
+        { name: 'Miami',           lat:  25.76, lon:  -80.19, scale: 2 },
+        { name: 'Boston',          lat:  42.36, lon:  -71.06, scale: 2 },
+        { name: 'Montreal',        lat:  45.50, lon:  -73.57, scale: 2 },
+        { name: 'Vancouver',       lat:  49.28, lon: -123.12, scale: 2 },
+        { name: 'Havana',          lat:  23.13, lon:  -82.38, scale: 2 },
+        { name: 'Amsterdam',       lat:  52.37, lon:    4.90, scale: 2 },
+        { name: 'Stockholm',       lat:  59.33, lon:   18.07, scale: 2 },
+        { name: 'Athens',          lat:  37.98, lon:   23.73, scale: 2 },
+        { name: 'Warsaw',          lat:  52.23, lon:   21.01, scale: 2 },
+        { name: 'Kyiv',            lat:  50.45, lon:   30.52, scale: 2 },
+        { name: 'Casablanca',      lat:  33.57, lon:   -7.59, scale: 2 },
+        { name: 'Auckland',        lat: -36.85, lon:  174.76, scale: 2 },
+        { name: 'Anchorage',       lat:  61.22, lon: -149.90, scale: 2 },
+        { name: 'Reykjavik',       lat:  64.15, lon:  -21.94, scale: 2 },
       ];
 
-      let artworkIdx = Math.floor(Math.random() * ARTWORKS.length);
-      let artworkShownSince = 0;
-      let artworkTargetsValid = false;
-      let artworkStartMs = 0;
-      const artworkTargets = new Float32Array(PARTICLE_COUNT * 2);
-
-      const _artworkDecodedBitmaps = {}; // key -> Uint8Array
-      function _getArtworkBitmap(key) {
-        if (_artworkDecodedBitmaps[key]) return _artworkDecodedBitmaps[key];
-        const b64 = (typeof ARTWORK_BITMAPS !== 'undefined') ? ARTWORK_BITMAPS[key] : null;
-        if (!b64) return null;
-        const bin = atob(b64);
-        const u = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-        _artworkDecodedBitmaps[key] = u;
-        return u;
+      // Pre-compute unit 3D vectors per city
+      const _cityVecX = new Float32Array(CITIES.length);
+      const _cityVecY = new Float32Array(CITIES.length);
+      const _cityVecZ = new Float32Array(CITIES.length);
+      for (let c = 0; c < CITIES.length; c++) {
+        const latR = CITIES[c].lat * Math.PI / 180;
+        const lonR = CITIES[c].lon * Math.PI / 180;
+        _cityVecX[c] =  Math.cos(latR) * Math.sin(lonR);
+        _cityVecY[c] = -Math.sin(latR);
+        _cityVecZ[c] =  Math.cos(latR) * Math.cos(lonR);
       }
 
-      function _rasterizeArtwork(idx) {
-        const sr = _flowSafeRegion();
-        const bm = _getArtworkBitmap(ARTWORKS[idx].key);
-        if (!bm || typeof ARTWORK_BITMAP_W === 'undefined') {
-          // Fallback: cluster at the safe-region center if the bitmap file didn't load
-          const cx = sr.l + sr.w / 2, cy = sr.t + sr.h / 2;
-          for (let i = 0; i < PARTICLE_COUNT; i++) {
-            artworkTargets[i*2]   = cx;
-            artworkTargets[i*2+1] = cy;
-          }
-          return;
-        }
-        const bw = ARTWORK_BITMAP_W, bh = ARTWORK_BITMAP_H;
-        const total = bw * bh;
-
-        // Build a cumulative distribution over pixel intensities so we can sample
-        // pixels with probability proportional to their weight (dark = heavier).
-        // Add a small constant floor so very-light pixels still occasionally get a particle.
-        const FLOOR = 4;
+      // Destination-weighting CDF (bigger cities are more-frequent destinations)
+      const _cityDestCDF = new Float32Array(CITIES.length);
+      (function _buildDestCDF() {
         let sum = 0;
-        const cdf = new Uint32Array(total);
-        for (let i = 0; i < total; i++) {
-          sum += (bm[i] + FLOOR);
-          cdf[i] = sum;
+        for (let c = 0; c < CITIES.length; c++) {
+          sum += CITIES[c].scale * CITIES[c].scale;
+          _cityDestCDF[c] = sum;
         }
-        if (sum === 0) {
-          const cx = sr.l + sr.w / 2, cy = sr.t + sr.h / 2;
-          for (let i = 0; i < PARTICLE_COUNT; i++) {
-            artworkTargets[i*2]   = cx;
-            artworkTargets[i*2+1] = cy;
-          }
-          return;
-        }
-
-        // Map bitmap → safe-region canvas coords, preserving aspect ratio and centering.
-        const scale = Math.min(sr.w / bw, sr.h / bh);
-        const dispW = bw * scale;
-        const dispH = bh * scale;
-        const offsetX = sr.l + (sr.w - dispW) / 2;
-        const offsetY = sr.t + (sr.h - dispH) / 2;
-
-        // Deterministic PRNG for stable particle-to-pixel mapping per artwork
-        let seed = (idx * 2654435761) ^ sum ^ (bw * 7919);
-        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
-
-        for (let k = 0; k < PARTICLE_COUNT; k++) {
-          // Weighted pixel pick: uniform sample into the CDF, binary search the pixel.
-          const r = rnd() * sum;
-          let lo = 0, hi = total - 1;
+      })();
+      function _pickDestCity(exclude) {
+        const total = _cityDestCDF[CITIES.length - 1];
+        for (let tries = 0; tries < 6; tries++) {
+          const r = Math.random() * total;
+          let lo = 0, hi = CITIES.length - 1;
           while (lo < hi) {
             const mid = (lo + hi) >>> 1;
-            if (cdf[mid] < r) lo = mid + 1;
+            if (_cityDestCDF[mid] < r) lo = mid + 1;
             else hi = mid;
           }
-          const pi = lo;
-          const pyPx = (pi / bw) | 0;
-          const pxPx = pi - pyPx * bw;
-          // Sub-pixel jitter so the particle cloud doesn't snap to a lattice
-          const jx = (rnd() - 0.5) * scale * 0.95;
-          const jy = (rnd() - 0.5) * scale * 0.95;
-          artworkTargets[k*2]     = offsetX + (pxPx + 0.5) * scale + jx;
-          artworkTargets[k*2 + 1] = offsetY + (pyPx + 0.5) * scale + jy;
+          if (lo !== exclude) return lo;
         }
+        return (exclude + 1) % CITIES.length;
       }
 
-      function _artworksReset() {
-        artworkIdx = Math.floor(Math.random() * ARTWORKS.length);
-        artworkTargetsValid = false;
-        artworkShownSince = 0;
+      // Per-particle state
+      const cityHome    = new Int16Array(PARTICLE_COUNT);
+      const cityDest    = new Int16Array(PARTICLE_COUNT);  // -1 if stationary
+      const travelStart = new Float64Array(PARTICLE_COUNT);
+      const angOff      = new Float32Array(PARTICLE_COUNT);
+      const radOff      = new Float32Array(PARTICLE_COUNT);
+
+      const cityCount   = new Int32Array(CITIES.length);
+
+      // Coastline particles — reserved slice of the particle pool that outline the continents.
+      // Each has a fixed (lat, lon) pulled from the bundled Natural Earth sample points.
+      const COAST_PARTICLE_COUNT = (typeof GLOBE_COASTLINES !== 'undefined')
+        ? Math.min(Math.floor(GLOBE_COASTLINES.length / 2), Math.floor(PARTICLE_COUNT / 2))
+        : 0;
+      const coastVecX = new Float32Array(COAST_PARTICLE_COUNT);
+      const coastVecY = new Float32Array(COAST_PARTICLE_COUNT);
+      const coastVecZ = new Float32Array(COAST_PARTICLE_COUNT);
+      (function _initCoastPoints() {
+        if (typeof GLOBE_COASTLINES === 'undefined') return;
+        for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
+          const lat = GLOBE_COASTLINES[i*2] * Math.PI / 180;
+          const lon = GLOBE_COASTLINES[i*2+1] * Math.PI / 180;
+          coastVecX[i] =  Math.cos(lat) * Math.sin(lon);
+          coastVecY[i] = -Math.sin(lat);
+          coastVecZ[i] =  Math.cos(lat) * Math.cos(lon);
+        }
+      })();
+
+      function _globeInitParticles() {
+        // Distribute non-coastline particles across cities weighted by scale
+        const weightSum = CITIES.reduce((s, c) => s + c.scale, 0);
+        const cdf = new Float32Array(CITIES.length);
+        let running = 0;
+        for (let c = 0; c < CITIES.length; c++) {
+          running += CITIES[c].scale;
+          cdf[c] = running / weightSum;
+        }
+        for (let i = COAST_PARTICLE_COUNT; i < PARTICLE_COUNT; i++) {
+          const r = Math.random();
+          let c = 0;
+          while (c < CITIES.length - 1 && cdf[c] < r) c++;
+          cityHome[i] = c;
+          cityDest[i] = -1;
+          travelStart[i] = 0;
+          angOff[i] = Math.random() * Math.PI * 2;
+          radOff[i] = Math.sqrt(Math.random());
+        }
+        // Coastline particles never travel or belong to a city
+        for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
+          cityHome[i] = 0; cityDest[i] = -1; travelStart[i] = 0;
+        }
+      }
+      _globeInitParticles();
+
+      let globeStartMs = 0;
+      let _globeLastFlowMs = 0;
+
+      function _globeReset() {
+        _globeLastFlowMs = 0;
+        _globeInitParticles();
       }
 
-      function computeArtworkTargets(tMs) {
-        if (!artworkTargetsValid) {
-          _rasterizeArtwork(artworkIdx);
-          artworkTargetsValid = true;
-          artworkShownSince = tMs;
-        } else if (tMs - artworkShownSince >= ARTWORK_HOLD_MS) {
-          artworkIdx = (artworkIdx + 1) % ARTWORKS.length;
-          _rasterizeArtwork(artworkIdx);
-          artworkShownSince = tMs;
+      function computeGlobeTargets(tMs) {
+        const sr = _flowSafeRegion();
+        const ccx = sr.l + sr.w / 2;
+        const ccy = sr.t + sr.h / 2;
+        const R = Math.min(sr.w, sr.h) * 0.42;
+
+        const rotAngle = (tMs / GLOBE_ROTATION_PERIOD_MS) * Math.PI * 2;
+
+        const cosR = Math.cos(rotAngle), sinR = Math.sin(rotAngle);
+
+        // ---- Coastline particles: fixed on sphere, rotated with globe, dim fade ----
+        for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
+          const px = coastVecX[i], py = coastVecY[i], pz = coastVecZ[i];
+          const rx =  px * cosR + pz * sinR;
+          const rz = -px * sinR + pz * cosR;
+          const ry =  py;
+          animTargets[i*2]   = ccx + rx * R;
+          animTargets[i*2+1] = ccy + ry * R;
+          // Coastlines are dimmer than cities so cities stay the focal points
+          let a;
+          if (rz > 0.08) a = 0.38;
+          else if (rz > -0.12) a = 0.38 * ((rz + 0.12) / 0.20);
+          else a = 0;
+          flowAlpha[i] = a;
         }
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          animTargets[i*2]   = artworkTargets[i*2];
-          animTargets[i*2+1] = artworkTargets[i*2+1];
+
+        // Flow: reassign a batch of stationary city-particles to new destinations
+        const cityPoolStart = COAST_PARTICLE_COUNT;
+        const cityPoolSize = PARTICLE_COUNT - COAST_PARTICLE_COUNT;
+        if (cityPoolSize > 0 && tMs - _globeLastFlowMs > GLOBE_FLOW_INTERVAL_MS) {
+          _globeLastFlowMs = tMs;
+          let launched = 0, tries = 0;
+          while (launched < GLOBE_FLOW_BATCH_SIZE && tries < GLOBE_FLOW_BATCH_SIZE * 4) {
+            tries++;
+            const i = cityPoolStart + ((Math.random() * cityPoolSize) | 0);
+            if (cityDest[i] !== -1) continue;
+            cityDest[i] = _pickDestCity(cityHome[i]);
+            travelStart[i] = tMs;
+            launched++;
+          }
+        }
+
+        // Count stationary residents per city (city pool only)
+        for (let c = 0; c < CITIES.length; c++) cityCount[c] = 0;
+        for (let i = cityPoolStart; i < PARTICLE_COUNT; i++) {
+          if (cityDest[i] === -1) cityCount[cityHome[i]]++;
+        }
+
+        const expectedResidents = cityPoolSize / CITIES.length;
+        const BASE_ANG_RAD = 0.022;
+
+        for (let i = cityPoolStart; i < PARTICLE_COUNT; i++) {
+          let px, py, pz;
+          if (cityDest[i] !== -1) {
+            // TRAVELING: slerp origin → dest along great circle
+            const t = Math.min(1, (tMs - travelStart[i]) / GLOBE_TRAVEL_DURATION_MS);
+            const oi = cityHome[i], di = cityDest[i];
+            const ox = _cityVecX[oi], oy = _cityVecY[oi], oz = _cityVecZ[oi];
+            const dx = _cityVecX[di], dy = _cityVecY[di], dz = _cityVecZ[di];
+            const dot = Math.max(-1, Math.min(1, ox*dx + oy*dy + oz*dz));
+            const theta = Math.acos(dot);
+            if (theta < 0.001) {
+              px = ox; py = oy; pz = oz;
+            } else {
+              const sinT = Math.sin(theta);
+              const k0 = Math.sin((1 - t) * theta) / sinT;
+              const k1 = Math.sin(t * theta) / sinT;
+              px = ox*k0 + dx*k1;
+              py = oy*k0 + dy*k1;
+              pz = oz*k0 + dz*k1;
+            }
+            if (t >= 1) {
+              // Arrived: become resident of destination
+              cityHome[i] = di;
+              cityDest[i] = -1;
+            }
+          } else {
+            // STATIONARY: tangent-plane offset from city center
+            const ci = cityHome[i];
+            const hx = _cityVecX[ci], hy = _cityVecY[ci], hz = _cityVecZ[ci];
+            // Cluster radius grows with sqrt(residents) — arrivals make the dot visibly bigger
+            const clusterScale = Math.sqrt(Math.max(1, cityCount[ci]) / expectedResidents);
+            const rad = BASE_ANG_RAD * clusterScale * radOff[i];
+            // Tangent frame: east = up × home (up = (0,-1,0) screen-up)
+            let eX =  1 * hz - 0;
+            let eY =  0;
+            let eZ =  0 - 1 * hx;
+            let eLen = Math.sqrt(eX*eX + eZ*eZ);
+            if (eLen < 1e-6) { eX = 1; eY = 0; eZ = 0; eLen = 1; }
+            eX /= eLen; eZ /= eLen;
+            // north = home × east
+            const nX = hy*eZ - hz*eY;
+            const nY = hz*eX - hx*eZ;
+            const nZ = hx*eY - hy*eX;
+            const c1 = Math.cos(angOff[i]), s1 = Math.sin(angOff[i]);
+            px = hx + (eX*c1 + nX*s1) * rad;
+            py = hy + (eY*c1 + nY*s1) * rad;
+            pz = hz + (eZ*c1 + nZ*s1) * rad;
+            // Re-normalize to sphere
+            const len = Math.sqrt(px*px + py*py + pz*pz);
+            if (len > 1e-6) { px /= len; py /= len; pz /= len; }
+          }
+
+          // Apply globe rotation (cosR/sinR hoisted at top of function)
+          const rx =  px * cosR + pz * sinR;
+          const rz = -px * sinR + pz * cosR;
+          const ry =  py;
+
+          // Orthographic projection
+          animTargets[i*2]   = ccx + rx * R;
+          animTargets[i*2+1] = ccy + ry * R;
+
+          // Fade behind the globe (terminator line smoothing)
+          let a;
+          if (rz > 0.08) a = 1.0;
+          else if (rz > -0.15) a = (rz + 0.15) / 0.23;
+          else a = 0;
+          flowAlpha[i] = a;
         }
       }
 
@@ -4612,57 +4790,12 @@
 
       function computeForgedTargets(tMs, dt) {
         _forgedInit();
-        const sr = _flowSafeRegion();
-        // Max reach of a ripple — a bit under half the safe-region min dimension
-        // so ripples can visibly cross the word but not fly off-screen.
-        const RIPPLE_MAX_R = Math.min(sr.w, sr.h) * 0.40;
-
-        // Deactivate ripples that have run their course.
-        for (let k = 0; k < MAX_RIPPLES; k++) {
-          if (rippleActive[k] && tMs - rippleStart[k] > RIPPLE_DURATION_MS) {
-            rippleActive[k] = 0;
-          }
-        }
-
-        // Occasionally spawn a new ripple at a random word-sample position.
-        if (tMs >= nextRippleAt) {
-          for (let k = 0; k < MAX_RIPPLES; k++) {
-            if (!rippleActive[k]) {
-              const pick = Math.floor(Math.random() * PARTICLE_COUNT);
-              rippleCx[k] = forgedAbsX[pick];
-              rippleCy[k] = forgedAbsY[pick];
-              rippleStart[k] = tMs;
-              rippleActive[k] = 1;
-              nextRippleAt = tMs + RIPPLE_MIN_GAP_MS + Math.random() * (RIPPLE_MAX_GAP_MS - RIPPLE_MIN_GAP_MS);
-              break;
-            }
-          }
-        }
-
-        // Per-particle: target = its stable word sample; ripples apply outward
-        // impulses when their expanding ring is near the particle. The shared
-        // spring then pulls the particle back to its target.
+        // Static word — each particle springs to its stable sample position
+        // from the rasterized "technical art". No ripples, no motion.
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           animTargets[i*2]   = forgedAbsX[i];
           animTargets[i*2+1] = forgedAbsY[i];
           flowAlpha[i] = 1;
-
-          for (let k = 0; k < MAX_RIPPLES; k++) {
-            if (!rippleActive[k]) continue;
-            const dx = px[i] - rippleCx[k];
-            const dy = py[i] - rippleCy[k];
-            const d = Math.hypot(dx, dy) || 0.001;
-            const elapsed = (tMs - rippleStart[k]) / RIPPLE_DURATION_MS; // 0..1
-            const ringR = elapsed * RIPPLE_MAX_R;
-            const ringDist = Math.abs(d - ringR);
-            if (ringDist > RIPPLE_RING_HALF_PX) continue;
-            // Triangular pulse across the ring thickness × time decay
-            const ringProximity = 1 - ringDist / RIPPLE_RING_HALF_PX;
-            const timeDecay = Math.exp(-elapsed * 2.0);
-            const impulse = RIPPLE_PEAK_IMPULSE * ringProximity * timeDecay;
-            vx[i] += (dx / d) * impulse * dt;
-            vy[i] += (dy / d) * impulse * dt;
-          }
         }
       }
 
@@ -4746,16 +4879,16 @@
           brushStartMs = performance.now();
           prevBrushCycle = 0;
         }
-        if (word === 'ARTWORKS') {
-          artworkStartMs = performance.now();
-          _artworksReset();
+        if (word === 'GLOBE') {
+          globeStartMs = performance.now();
+          _globeReset();
         }
         // Reset alpha — FLOW/ALIVE modulate per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         if (word === 'ALIVE') aliveInitialized = false;
         if (word === 'FORGED') forgedInitialized = false;
         const label = document.getElementById('phil-shape-name');
-        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', ARTWORKS: 'iconic works' };
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', GLOBE: 'cities' };
         if (label) label.textContent = labelMap[word] || word;
       }
 
@@ -4821,8 +4954,8 @@
           computeAliveTargets(t, dt);
         } else if (isAnimated && currentShape === 'FORGED') {
           computeForgedTargets(t, dt);
-        } else if (isAnimated && currentShape === 'ARTWORKS') {
-          computeArtworkTargets(t - artworkStartMs);
+        } else if (isAnimated && currentShape === 'GLOBE') {
+          computeGlobeTargets(t - globeStartMs);
         }
 
         let arrived = 0;
@@ -4912,32 +5045,82 @@
 
       let _scrollRaf = 0;
       let _lastAppliedOffset = NaN;
-      function syncCanvasPos() {
-        _scrollRaf = 0;
+      // ──────────────────────────────────────────────────────────────────
+      // Scroll-range state machine for the mobile philosophy footer.
+      //
+      // The canvas's visible Y position is a piecewise-linear function of
+      // window.scrollY. Rather than reading getBoundingClientRect on every
+      // scroll tick (forces a synchronous layout and is the main contributor
+      // to iOS Safari scroll-time jitter), we precompute the page-coordinate
+      // thresholds ONCE at load / on real layout events, and then during
+      // scroll just do a few arithmetic comparisons on window.scrollY.
+      //
+      // Phases, defined in page coordinates (Y = absolute distance from
+      // document top):
+      //   HIDDEN-BELOW : scrollY < flowStartY
+      //                  → canvas parked off-screen below viewport
+      //   FLOW         : flowStartY ≤ scrollY < flowEndY
+      //                  → canvas follows p1 upward as user scrolls
+      //   PINNED       : flowEndY ≤ scrollY < pinEndY
+      //                  → canvas locked at viewport bottom (no change)
+      //   ANCHOR       : pinEndY ≤ scrollY < anchorEndY
+      //                  → canvas rides out with the section end
+      //   HIDDEN-ABOVE : scrollY ≥ anchorEndY
+      //                  → canvas parked off-screen above viewport
+      //
+      // Thresholds derived once:
+      //   flowStartY  = p1BottomPage + 16 - vh
+      //   flowEndY    = p1BottomPage + 16 + canvasH - vh
+      //   pinEndY     = sectionBottomPage - vh
+      //   anchorEndY  = sectionBottomPage
+      // ──────────────────────────────────────────────────────────────────
+      let _state = null;
+      function computeScrollState() {
         if (!mqlPhil.matches || !firstPara || !philSection) {
-          canvas.style.transform = '';
-          _lastAppliedOffset = NaN;
+          _state = null;
           return;
         }
         const vh = window.innerHeight;
         const canvasH = canvas.offsetHeight;
+        const scrollY = window.scrollY || window.pageYOffset;
         const p1Rect = firstPara.getBoundingClientRect();
         const sRect  = philSection.getBoundingClientRect();
+        const p1BottomPage = p1Rect.bottom + scrollY;
+        const sectionBottomPage = sRect.bottom + scrollY;
+        _state = {
+          vh, canvasH,
+          flowStartY: p1BottomPage + 16 - vh,
+          flowEndY:   p1BottomPage + 16 + canvasH - vh,
+          pinEndY:    sectionBottomPage - vh,
+          anchorEndY: sectionBottomPage,
+          // For interpolation inside FLOW / ANCHOR phases:
+          p1BottomPage,
+          sectionBottomPage,
+        };
+      }
 
-        const flowTop = p1Rect.bottom + 16;
-        const pinTop = vh - canvasH;
-        const sectionAnchorTop = sRect.bottom - canvasH;
-
-        let targetTop;
-        if (flowTop > pinTop) {
-          targetTop = flowTop;
-        } else {
-          targetTop = Math.min(pinTop, sectionAnchorTop);
+      function syncCanvasPos() {
+        _scrollRaf = 0;
+        if (!_state) {
+          canvas.style.transform = '';
+          _lastAppliedOffset = NaN;
+          return;
         }
-
-        const offset = Math.round(targetTop - pinTop);
-        // Only write the transform when the value actually changed — skipping
-        // redundant writes reduces iOS compositor-layer churn during scroll.
+        const y = window.scrollY || window.pageYOffset;
+        const s = _state;
+        let offset;
+        if (y < s.flowStartY) {
+          offset = s.canvasH;                              // HIDDEN BELOW
+        } else if (y < s.flowEndY) {
+          offset = s.p1BottomPage + 16 - y - s.vh + s.canvasH; // FLOW
+        } else if (y < s.pinEndY) {
+          offset = 0;                                      // PINNED
+        } else if (y < s.anchorEndY) {
+          offset = s.sectionBottomPage - y - s.vh;         // ANCHOR
+        } else {
+          offset = -s.canvasH;                             // HIDDEN ABOVE
+        }
+        offset = Math.round(offset);
         if (offset !== _lastAppliedOffset) {
           canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
           _lastAppliedOffset = offset;
@@ -4947,39 +5130,34 @@
         if (_scrollRaf) return;
         _scrollRaf = requestAnimationFrame(syncCanvasPos);
       }
-      // On mobile, window.resize fires spuriously during scroll (Safari
-       // emits these even when the URL bar isn't visibly moving) and each
-       // one triggers resize() → rebuildShape(), which resets the simulation
-       // to its idle frame. Mobile can't actually change window size mid-
-       // session — only orientationchange is a real layout event. So on
-       // mobile we skip the WebGL rebuild on resize and only do it on
-       // orientation change. Desktop keeps the prior behavior so real
-       // window resizes still work.
-      function maybeWebGLResize() {
-        if (mqlPhil.matches) return;
-        resize();
-      }
+
+      // ──────────────────────────────────────────────────────────────────
+      // Event wiring. Scroll is the only per-frame driver. Width-gated
+      // resize and orientationchange recompute the precomputed thresholds
+      // and rebuild the WebGL shape (on desktop / on orientation change).
+      // Mobile spurious window.resize events (URL-bar artifacts) do
+      // nothing because the width check rejects them.
+      // ──────────────────────────────────────────────────────────────────
+      let _lastW = window.innerWidth;
       window.addEventListener('scroll', scheduleSync, { passive: true });
       window.addEventListener('resize', () => {
-        // Mobile can't actually resize; every window.resize event there is
-        // a Safari artifact. Skip the handler entirely on mobile so the
-        // canvas transform is never reshuffled by spurious events. Scroll
-        // remains the sole driver of mobile position updates.
-        if (mqlPhil.matches) return;
+        const w = window.innerWidth;
+        if (Math.abs(w - _lastW) < 2) return; // spurious (URL-bar etc.)
+        _lastW = w;
+        if (!mqlPhil.matches) resize(); // WebGL rebuild only on desktop resize
+        computeScrollState();
         scheduleSync();
-        resize();
       });
       window.addEventListener('orientationchange', () => {
-        // Let the browser settle the new viewport before reading dimensions.
-        setTimeout(() => { resize(); scheduleSync(); }, 180);
+        setTimeout(() => { resize(); computeScrollState(); scheduleSync(); }, 180);
       });
       mqlPhil.addEventListener('change', () => {
-        // Real layout mode change (mobile <-> desktop): rebuild once.
         resize();
+        computeScrollState();
         scheduleSync();
       });
-      // Run once after layout settles so initial position is right.
-      requestAnimationFrame(syncCanvasPos);
+      // Compute initial state after layout has settled.
+      requestAnimationFrame(() => { computeScrollState(); syncCanvasPos(); });
 
       // --- init ---
       // (The extra window.addEventListener('resize', resize) that used to
