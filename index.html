@@ -348,18 +348,35 @@
          containing block the section itself, so the sticky range extends
          all the way to the section's end instead of stopping where
          .philosophy-text ends. */
-      .philosophy-grid { display: contents; }
-      .philosophy-grid > div:first-child { display: none; }
-      .philosophy-text { display: contents; }
-      /* Paragraphs and the label handle their own horizontal padding now
-         that their wrapper has no box. */
-      .philosophy-text > p,
-      .philosophy-canvas-label {
-        padding-left: 1.5rem;
-        padding-right: 1.5rem;
-        max-width: 640px;
-        margin-left: auto;
-        margin-right: auto;
+      .philosophy-grid {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+        padding: 0 1.5rem;
+      }
+      .philosophy-text {
+        margin: 0 auto;
+        justify-self: center;
+        margin-bottom: 2rem;
+      }
+      /* JS lifts the first paragraph up to section-level and sits the
+         canvas directly after it. That makes the canvas a section-level
+         flow child, so its sticky containing block is the section — the
+         pin holds through p2/p3/label and only releases at the section's
+         end. This class restyles the hoisted paragraph to match. */
+      .philosophy-lead {
+        font-family: var(--font-display);
+        font-size: 1.25rem;
+        line-height: 1.95;
+        color: var(--silver);
+        max-width: 540px;
+        margin: 0 auto 1.5rem;
+        padding: 0 1.5rem;
+      }
+      .philosophy-lead em,
+      .philosophy-lead strong {
+        color: var(--amber);
+        font-weight: inherit;
+        font-style: normal;
       }
       .philosophy-canvas-label { text-align: center; }
 
@@ -2929,8 +2946,11 @@
           shapeRightPx = W * 0.9;
           shapeCenterY = H / 2;
         } else {
-          // Desktop: shape fits between canvas left edge and text column's left edge
-          shapeLeftPx = Math.max(SHAPE_EDGE_PAD_PX, canvasRect.left < 0 ? -canvasRect.left + SHAPE_EDGE_PAD_PX : SHAPE_EDGE_PAD_PX);
+          // Desktop: mirror the right-side margin on the left so the particle area
+          // is balanced visually with the paragraph column.
+          const textRightInCanvas = textRect.right - canvasRect.left;
+          const rightMargin = Math.max(0, W - textRightInCanvas);
+          shapeLeftPx = Math.max(SHAPE_EDGE_PAD_PX, rightMargin);
           const textLeftInCanvas = textRect.left - canvasRect.left;
           shapeRightPx = Math.max(shapeLeftPx + 60, textLeftInCanvas - SHAPE_SAFETY_GAP_PX);
           shapeCenterY = H / 2;
@@ -3571,23 +3591,37 @@
         });
       });
 
-      // --- Mobile: relocate the canvas to sit right after the first paragraph
-      //     inside .philosophy-text. The canvas is sticky-bottom:0 on mobile
-      //     so it flows in naturally, pins to viewport bottom once fully in
-      //     view, then unsticks at the section's end. On desktop it goes back
-      //     to being a section-level absolute full-bleed canvas. ---
+      // --- Mobile: hoist the first paragraph up to be a direct child of the
+      //     section, with the canvas sitting directly after it — also as a
+      //     direct child of the section. That way the canvas's sticky
+      //     containing block IS the section, so the pin holds through p2/p3
+      //     /label and only releases at the section's end. On desktop,
+      //     everything goes back to where it started. ---
       const philSection = document.getElementById('philosophy');
       const philText = document.querySelector('.philosophy-text');
       const firstPara = philText ? philText.querySelector(':scope > p:first-of-type') : null;
+      const philGrid = document.querySelector('.philosophy-grid');
       const mqlPhil = window.matchMedia('(max-width: 880px)');
-      let canvasHome = canvas.parentElement; // remember desktop home
+      const canvasHome = canvas.parentElement; // remember desktop home
+      const paraHome = firstPara ? firstPara.parentElement : null;
       function placeCanvas() {
         if (!canvas || !philSection) return;
-        if (mqlPhil.matches && philText && firstPara) {
+        if (mqlPhil.matches && firstPara && philGrid) {
+          // Move p1 up to be a section-level sibling right before philosophy-grid
+          if (firstPara.parentElement !== philSection) {
+            philSection.insertBefore(firstPara, philGrid);
+          }
+          firstPara.classList.add('philosophy-lead');
+          // Move the canvas immediately after the hoisted paragraph, still at section level
           if (firstPara.nextElementSibling !== canvas) {
             firstPara.after(canvas);
           }
         } else {
+          // Restore p1 to the top of .philosophy-text
+          if (firstPara && paraHome && firstPara.parentElement !== paraHome) {
+            paraHome.insertBefore(firstPara, paraHome.firstChild);
+          }
+          if (firstPara) firstPara.classList.remove('philosophy-lead');
           if (canvas.parentElement !== canvasHome) {
             canvasHome.appendChild(canvas);
           }
