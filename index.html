@@ -669,6 +669,15 @@
       line-height: 1.8;
     }
 
+    /* Inline emphasis in FAQ answers — match philosophy's amber accent.
+       Color does the work; no bold needed. */
+    .faq-item strong,
+    .faq-item em {
+      color: var(--amber);
+      font-weight: inherit;
+      font-style: normal;
+    }
+
     /* Animated body wrapper (applied via JS on load). Force display so we can
        animate max-height even when <details> is not open. */
     .faq-item > .faq-body {
