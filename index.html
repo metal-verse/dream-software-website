@@ -439,7 +439,7 @@
         /* Reserve vertical space below the text so that when the canvas is
            pinned at the viewport bottom, the last paragraph can scroll past
            it without the next section starting too soon. */
-        padding-bottom: calc(260px + 2rem);
+        padding-bottom: calc(38vh + 2rem);
       }
       .philosophy-text {
         margin: 0 auto;
@@ -460,9 +460,9 @@
         left: 0;
         right: 0;
         width: 100vw;
-        /* Fixed px height so offsetHeight doesn't drift with URL-bar state
-           and scroll-driven position math stays stable. */
-        height: 260px;
+        height: 38vh;
+        min-height: 260px;
+        max-height: 440px;
         z-index: 50;
         pointer-events: none;
         display: block;
@@ -473,13 +473,9 @@
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        /* Default state: canvas sits at the viewport bottom but invisible.
-           We hide via opacity (not transform offscreen) so iOS Safari's
-           compositor can never flash an "offscreen" baseline during scroll
-           even if it momentarily reverts to CSS defaults. */
-        transform: translate3d(0, 0, 0);
-        opacity: 0;
-        will-change: transform, opacity;
+        /* Off-screen below by default — JS takes over on the first scroll event */
+        transform: translate3d(0, 100%, 0);
+        will-change: transform;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -1603,7 +1599,7 @@
         <p>
           We believe code is a <strong class="phrase-trigger" data-shape="ALIVE">creative medium</strong> — as expressive as paint, as
           precise as engineering, as alive as a physics simulation. The best software doesn't
-          just function. It <em class="phrase-trigger" data-shape="MOVES">moves people</em>.
+          just function. It <em class="phrase-trigger" data-shape="RESONANCE">moves people</em>.
         </p>
         <p>
           That's what Dream Software builds. <strong class="phrase-trigger" data-shape="FLOW">Software worth looking at. Software worth
@@ -3040,7 +3036,7 @@
 
       const PARTICLE_COUNT = 4000;
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true };
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true, RESONANCE: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
@@ -3733,6 +3729,107 @@
           l: shapeLeftPx, r: shapeRightPx, t: safeTopY, b: safeBottomY,
           w: shapeRightPx - shapeLeftPx, h: safeBottomY - safeTopY,
         };
+      }
+
+      // ===== RESONANCE — coupled-string standing waves =====
+      // Model: N horizontal strings stacked vertically, each with its own standing-wave
+      // mode, frequency, amplitude, and phase. "Strikes" pump energy into a random string
+      // with a random mode/frequency; coupling (a shared "skateboard") then diffuses
+      // amplitude and drags mode/frequency of each string toward the amplitude-weighted
+      // mean of the group — so energy spreads and the ensemble synchronizes between strikes.
+      const RES_N_STRINGS = 4;
+      const RES_STRIKE_INTERVAL_MS = 7500;
+      const resAmp   = new Float32Array(RES_N_STRINGS);
+      const resMode  = new Float32Array(RES_N_STRINGS);
+      const resFreq  = new Float32Array(RES_N_STRINGS);
+      const resPhase = new Float32Array(RES_N_STRINGS);
+      const resString = new Int8Array(PARTICLE_COUNT);
+      const resXFrac  = new Float32Array(PARTICLE_COUNT);
+      (function _initResonance() {
+        for (let i = 0; i < RES_N_STRINGS; i++) {
+          resAmp[i] = 0; resMode[i] = 1; resFreq[i] = 2;
+          resPhase[i] = Math.random() * Math.PI * 2;
+        }
+        const perString = PARTICLE_COUNT / RES_N_STRINGS;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          resString[i] = Math.min(RES_N_STRINGS - 1, Math.floor(i / perString));
+          resXFrac[i] = Math.random();
+        }
+      })();
+      let resonanceStartMs = 0;
+      let lastResonanceStrikeMs = -Infinity;
+      let prevResonanceMs = 0;
+
+      function _resonanceReset() {
+        for (let i = 0; i < RES_N_STRINGS; i++) {
+          resAmp[i] = 0; resMode[i] = 1; resFreq[i] = 2;
+          resPhase[i] = Math.random() * Math.PI * 2;
+        }
+        lastResonanceStrikeMs = -Infinity;
+        prevResonanceMs = 0;
+      }
+
+      function computeResonanceTargets(tCycleMs) {
+        // First strike fires shortly after activation; subsequent strikes at fixed interval
+        const strikeDue =
+          (lastResonanceStrikeMs === -Infinity && tCycleMs > 700) ||
+          (tCycleMs - lastResonanceStrikeMs >= RES_STRIKE_INTERVAL_MS);
+        if (strikeDue) {
+          // Prefer the lowest-amplitude string so each strike re-energizes a quieter one
+          let idx = 0, minA = Infinity;
+          for (let i = 0; i < RES_N_STRINGS; i++) {
+            if (resAmp[i] < minA) { minA = resAmp[i]; idx = i; }
+          }
+          resAmp[idx]   = 1.0;
+          resMode[idx]  = 1 + Math.floor(Math.random() * 4);   // 1..4 half-waves
+          resFreq[idx]  = 1.7 + Math.random() * 2.0;           // 1.7..3.7 rad/s
+          resPhase[idx] = 0;
+          lastResonanceStrikeMs = tCycleMs;
+        }
+
+        const dt = Math.min(0.05, Math.max(0, (tCycleMs - prevResonanceMs) / 1000));
+        prevResonanceMs = tCycleMs;
+
+        // Coupling — amplitude-weighted means for mode & frequency, plus amplitude diffusion
+        let ampSum = 0, modeWSum = 0, freqWSum = 0;
+        for (let i = 0; i < RES_N_STRINGS; i++) {
+          ampSum   += resAmp[i];
+          modeWSum += resAmp[i] * resMode[i];
+          freqWSum += resAmp[i] * resFreq[i];
+        }
+        const ampGuard = Math.max(0.001, ampSum);
+        const meanMode = modeWSum / ampGuard;
+        const meanFreq = freqWSum / ampGuard;
+        const ampMean  = ampSum / RES_N_STRINGS;
+
+        for (let i = 0; i < RES_N_STRINGS; i++) {
+          const otherAmp = ampSum - resAmp[i];
+          const couplingK = 0.20 * otherAmp;
+          resMode[i] += (meanMode - resMode[i]) * couplingK * dt;
+          resFreq[i] += (meanFreq - resFreq[i]) * couplingK * dt;
+          resAmp[i]  += (ampMean - resAmp[i]) * 0.32 * dt;
+          resAmp[i]  *= Math.exp(-0.035 * dt);  // very slow global decay
+        }
+
+        // Layout — reuse the flow safe region
+        const sr = _flowSafeRegion();
+        const spanL = sr.l + sr.w * 0.05;
+        const spanR = sr.r - sr.w * 0.05;
+        const spanW = spanR - spanL;
+        const stringSpacing = sr.h / (RES_N_STRINGS + 1);
+        const maxDisp = stringSpacing * 0.40;
+
+        const tSec = tCycleMs / 1000;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const s = resString[i];
+          const x = resXFrac[i];
+          const baselineY = sr.t + stringSpacing * (s + 1);
+          const spatial = Math.sin(resMode[s] * Math.PI * x);
+          const temporal = Math.sin(resFreq[s] * tSec + resPhase[s]);
+          const yOff = resAmp[s] * maxDisp * spatial * temporal;
+          animTargets[i*2]   = spanL + x * spanW;
+          animTargets[i*2+1] = baselineY + yOff;
+        }
       }
 
       function _flowNodeOutlinePoint(geom, type, u, v, out) {
@@ -4482,8 +4579,6 @@
       const vs = `
         attribute vec2 aPos;
         attribute vec3 aCol;
-        attribute vec2 aPos;
-        attribute vec3 aCol;
         attribute float aAlpha;
         uniform vec2 uRes;
         uniform float uDpr;
@@ -4560,12 +4655,16 @@
           brushStartMs = performance.now();
           prevBrushCycle = 0;
         }
+        if (word === 'RESONANCE') {
+          resonanceStartMs = performance.now();
+          _resonanceReset();
+        }
         // Reset alpha — FLOW/ALIVE modulate per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         if (word === 'ALIVE') aliveInitialized = false;
         if (word === 'FORGED') forgedInitialized = false;
         const label = document.getElementById('phil-shape-name');
-        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging' };
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', RESONANCE: 'resonance' };
         if (label) label.textContent = labelMap[word] || word;
       }
 
@@ -4631,6 +4730,8 @@
           computeAliveTargets(t, dt);
         } else if (isAnimated && currentShape === 'FORGED') {
           computeForgedTargets(t, dt);
+        } else if (isAnimated && currentShape === 'RESONANCE') {
+          computeResonanceTargets(t - resonanceStartMs);
         }
 
         let arrived = 0;
@@ -4718,84 +4819,41 @@
       const firstPara = philText ? philText.querySelector(':scope > p:first-of-type') : null;
       const mqlPhil = window.matchMedia('(max-width: 880px)');
 
-      // Canvas mode: 'flow' = tracking p1 (sliding in), 'pinned' = at viewport
-      // bottom, 'anchor' = riding out with section bottom. We keep the current
-      // mode and only switch when the crossover exceeds HYSTERESIS_PX — that
-      // kills the pin/anchor flip when vh wobbles by a pixel or two during
-      // Safari's URL-bar animation.
-      const HYSTERESIS_PX = 10;
-      const OFFSCREEN_MARGIN_PX = 60; // skip work when canvas can't be visible
-      let _canvasMode = 'flow';
-      let _lastAppliedOffset = NaN;
-      let _lastAppliedOpacity = NaN;
       let _scrollRaf = 0;
-      // visualViewport is more stable during Safari chrome animation than
-      // window.innerHeight, which transitions smoothly as the URL bar moves.
-      const vvp = window.visualViewport || null;
-
-      function applyState(offset, visible) {
-        if (offset !== _lastAppliedOffset) {
-          canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
-          _lastAppliedOffset = offset;
-        }
-        const op = visible ? 1 : 0;
-        if (op !== _lastAppliedOpacity) {
-          canvas.style.opacity = String(op);
-          _lastAppliedOpacity = op;
-        }
-      }
-
       function syncCanvasPos() {
         _scrollRaf = 0;
         if (!mqlPhil.matches || !firstPara || !philSection) {
-          // Desktop / missing elements — defer to CSS defaults.
-          if (canvas.style.transform) canvas.style.transform = '';
-          if (canvas.style.opacity)   canvas.style.opacity = '';
-          _canvasMode = 'flow';
-          _lastAppliedOffset = NaN;
-          _lastAppliedOpacity = NaN;
+          canvas.style.transform = '';
           return;
         }
-        const vh = vvp ? vvp.height : window.innerHeight;
-        const canvasH = canvas.offsetHeight;
+        const vh = window.innerHeight;
+        const canvasH = canvas.offsetHeight;       // matches the 38vh mobile rule
+        const p1Rect = firstPara.getBoundingClientRect();
         const sRect  = philSection.getBoundingClientRect();
 
-        // Short-circuit: section fully off-screen. Hide via opacity (no
-        // transform change) so the compositor isn't doing extra work.
-        if (sRect.bottom < -OFFSCREEN_MARGIN_PX || sRect.top > vh + OFFSCREEN_MARGIN_PX) {
-          applyState(_lastAppliedOffset || 0, false);
-          return;
-        }
-
-        const p1Rect = firstPara.getBoundingClientRect();
+        // Where we'd like the canvas's top to sit (just below p1, like it's
+        // the next thing in flow).
         const flowTop = p1Rect.bottom + 16;
+        // Lowest allowed canvas-top while pinned — bottom of viewport minus
+        // its own height puts the canvas flush with the viewport bottom.
         const pinTop = vh - canvasH;
+        // As the section ends, anchor the canvas's bottom to the section's
+        // bottom so it rides out.
         const sectionAnchorTop = sRect.bottom - canvasH;
 
-        // Mode decision with hysteresis. Switch only when the new mode's
-        // position differs from the current by more than HYSTERESIS_PX.
-        let nextMode = _canvasMode;
-        if (flowTop > pinTop + HYSTERESIS_PX) {
-          nextMode = 'flow';
-        } else if (flowTop < pinTop - HYSTERESIS_PX) {
-          if (sectionAnchorTop < pinTop - HYSTERESIS_PX) {
-            nextMode = 'anchor';
-          } else if (sectionAnchorTop > pinTop + HYSTERESIS_PX) {
-            nextMode = 'pinned';
-          }
-        }
-        _canvasMode = nextMode;
-
         let targetTop;
-        if (_canvasMode === 'flow')         targetTop = flowTop;
-        else if (_canvasMode === 'anchor')  targetTop = sectionAnchorTop;
-        else                                targetTop = pinTop;
+        if (flowTop > pinTop) {
+          // Canvas hasn't fully scrolled into viewport yet — follow p1.
+          targetTop = flowTop;
+        } else {
+          // Pinned or riding out with the section.
+          targetTop = Math.min(pinTop, sectionAnchorTop);
+        }
 
-        const offset = Math.round(targetTop - pinTop);
-        // Visible whenever the section is on screen AND the canvas's position
-        // would actually place it within the viewport.
-        const visible = (offset < canvasH) && (offset > -canvasH);
-        applyState(offset, visible);
+        // Canvas's CSS rule places it at viewport bottom (top = pinTop).
+        // Translate from there to the desired position.
+        const offset = targetTop - pinTop;
+        canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
       }
       function scheduleSync() {
         if (_scrollRaf) return;
@@ -4806,12 +4864,6 @@
         scheduleSync();
         if (typeof resize === 'function') resize();
       });
-      if (vvp) {
-        // Safari URL-bar animation fires these; keep our position synced
-        // without waiting for the next scroll event.
-        vvp.addEventListener('resize', scheduleSync);
-        vvp.addEventListener('scroll', scheduleSync);
-      }
       mqlPhil.addEventListener('change', () => {
         if (typeof resize === 'function') resize();
         scheduleSync();
