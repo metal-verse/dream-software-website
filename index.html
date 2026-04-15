@@ -241,20 +241,71 @@
     }
 
     /* ===== PHILOSOPHY ===== */
-    #philosophy {
+    /* Override default section constraints — philosophy is full-bleed so the canvas can span the viewport */
+    section#philosophy {
       border-top: 1px solid var(--graphite);
-      text-align: center;
+      position: relative;
+      overflow: hidden;
+      max-width: none;
+      padding: 6rem 0;
+      margin: 0;
+    }
+
+    #philosophy-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    #philosophy > .section-label,
+    #philosophy > .section-title {
+      position: relative;
+      z-index: 1;
+      max-width: 1200px;
+      margin-left: auto;
+      margin-right: auto;
+      padding-left: 3rem;
+      padding-right: 3rem;
+    }
+
+    .philosophy-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr minmax(420px, 540px);
+      gap: 3rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 3rem;
+      align-items: center;
+    }
+
+    .philosophy-canvas-label {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--iron);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-top: 2rem;
+      text-align: right;
+    }
+
+    .philosophy-canvas-label .val {
+      color: var(--amber);
     }
 
     .philosophy-text {
-      max-width: 650px;
-      margin: 0 auto;
+      justify-self: end;
+      max-width: 540px;
     }
 
     .philosophy-text p {
       font-family: var(--font-display);
-      font-size: 1.3rem;
-      line-height: 2;
+      font-size: 1.25rem;
+      line-height: 1.95;
       color: var(--silver);
       margin-bottom: 1.5rem;
     }
@@ -267,6 +318,34 @@
     .philosophy-text p em {
       color: var(--amber);
       font-style: normal;
+    }
+
+    .phrase-trigger {
+      cursor: help;
+      border-bottom: 1px dotted rgba(212, 134, 58, 0.35);
+      transition: border-color 0.25s, color 0.25s;
+    }
+
+    .phrase-trigger:hover {
+      border-bottom-color: var(--copper);
+    }
+
+    .phrase-trigger.active {
+      color: var(--copper);
+      border-bottom-color: var(--copper);
+    }
+
+    @media (max-width: 880px) {
+      section#philosophy { padding: 4rem 0; }
+      #philosophy > .section-label,
+      #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
+      .philosophy-grid {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+        padding: 0 1.5rem;
+      }
+      .philosophy-text { margin: 0 auto; justify-self: center; }
+      .philosophy-canvas-label { text-align: center; }
     }
 
     /* ===== SERVICES ===== */
@@ -1083,6 +1162,110 @@
       color: var(--iron);
     }
 
+    /* ===== HAMBURGER / MOBILE NAV ===== */
+    .nav-toggle {
+      display: none;
+      background: transparent;
+      border: none;
+      padding: 0.5rem;
+      cursor: pointer;
+      width: 40px;
+      height: 40px;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .nav-toggle span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: var(--warm-white);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.2s, background 0.3s;
+    }
+
+    .nav-toggle[aria-expanded="true"] span:nth-child(1) {
+      transform: translateY(7px) rotate(45deg);
+      background: var(--amber);
+    }
+    .nav-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+    .nav-toggle[aria-expanded="true"] span:nth-child(3) {
+      transform: translateY(-7px) rotate(-45deg);
+      background: var(--amber);
+    }
+
+    .mobile-nav {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(80vw, 340px);
+      background: rgba(26, 26, 26, 0.96);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border-left: 1px solid rgba(212, 134, 58, 0.25);
+      z-index: 99;
+      padding: 5.5rem 2rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      visibility: hidden;
+    }
+
+    .mobile-nav.open {
+      transform: translateX(0);
+      visibility: visible;
+    }
+
+    .mobile-nav a {
+      color: var(--light);
+      text-decoration: none;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      letter-spacing: 1px;
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--graphite);
+      transition: color 0.25s, padding-left 0.25s;
+    }
+
+    .mobile-nav a:hover,
+    .mobile-nav a:active { color: var(--amber); padding-left: 0.5rem; }
+
+    .mobile-nav-cta {
+      margin-top: 1.5rem;
+      background: var(--amber);
+      color: var(--charcoal) !important;
+      text-align: center;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.95rem !important;
+      letter-spacing: 2px !important;
+      text-transform: uppercase;
+      padding: 1rem !important;
+      border-bottom: none !important;
+    }
+    .mobile-nav-cta:hover { background: var(--copper); padding-left: 1rem !important; }
+
+    .mobile-nav-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 98;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .mobile-nav-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    body.nav-open { overflow: hidden; }
+
     /* ===== RESPONSIVE ===== */
     @media (max-width: 900px) {
       nav { padding: 1rem 1.5rem; }
@@ -1092,7 +1275,8 @@
       .portfolio-grid { grid-template-columns: 1fr; }
       .process-steps { grid-template-columns: 1fr 1fr; }
       .process-steps::before { display: none; }
-      .nav-links a:not(.nav-cta) { display: none; }
+      .nav-links a { display: none; }
+      .nav-toggle { display: flex; }
     }
 
     @media (max-width: 600px) {
@@ -1133,7 +1317,23 @@
       <a href="#faq">FAQ</a>
       <a href="javascript:void(0)" class="nav-cta" onclick="openContactForm()">Start a Project</a>
     </div>
+    <button class="nav-toggle" aria-label="Open menu" aria-expanded="false" onclick="toggleMobileNav()">
+      <span></span><span></span><span></span>
+    </button>
   </nav>
+
+  <!-- MOBILE NAV DRAWER -->
+  <div class="mobile-nav" id="mobile-nav" aria-hidden="true">
+    <a href="#services" onclick="closeMobileNav()">Services</a>
+    <a href="#philosophy" onclick="closeMobileNav()">Philosophy</a>
+    <a href="#portfolio" onclick="closeMobileNav()">Work</a>
+    <a href="#process" onclick="closeMobileNav()">Process</a>
+    <a href="#about" onclick="closeMobileNav()">About</a>
+    <a href="#faq" data-faq="pricing" onclick="closeMobileNav()">Pricing</a>
+    <a href="#faq" onclick="closeMobileNav()">FAQ</a>
+    <a href="javascript:void(0)" class="mobile-nav-cta" onclick="closeMobileNav(); openContactForm();">Start a Project</a>
+  </div>
+  <div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="closeMobileNav()"></div>
 
   <!-- HERO -->
   <section id="hero">
@@ -1214,23 +1414,31 @@
 
   <!-- PHILOSOPHY -->
   <section id="philosophy">
-    <div class="section-label">// Why We Build</div>
-    <div class="section-title">More Than Just Code</div>
-    <div class="philosophy-text">
-      <p>
-        Most software is <strong>invisible</strong>. Pipes moving data. Forms collecting input.
-        Dashboards displaying numbers. It works. It's fine. <em>We want more than fine.</em>
-      </p>
-      <p>
-        We believe code is a <strong>creative medium</strong> — as expressive as paint, as
-        precise as engineering, as alive as a physics simulation. The best software doesn't
-        just function. It <em>moves people</em>.
-      </p>
-      <p>
-        That's what Dream Software builds. <strong>Software worth looking at. Software worth
-        talking about.</strong> Software that proves technology and artistry aren't opposites — they're
-        the same thing, <em>forged together</em>.
-      </p>
+    <canvas id="philosophy-canvas"></canvas>
+    <div class="section-label" style="text-align:center;">// Why We Build</div>
+    <div class="section-title" style="text-align:center;">More Than Just Code</div>
+    <div class="philosophy-grid">
+      <div></div>
+      <div class="philosophy-text">
+        <p>
+          Most software is invisible. Pipes moving data. Forms collecting input.
+          Dashboards displaying numbers. It works. It's fine.
+          <em class="phrase-trigger" data-shape="BRUSH">We want more than fine.</em>
+        </p>
+        <p>
+          We believe code is a <strong class="phrase-trigger" data-shape="ALIVE">creative medium</strong> — as expressive as paint, as
+          precise as engineering, as alive as a physics simulation. The best software doesn't
+          just function. It <em class="phrase-trigger" data-shape="MOVES">moves people</em>.
+        </p>
+        <p>
+          That's what Dream Software builds. <strong class="phrase-trigger" data-shape="CRAFT">Software worth looking at. Software worth
+          talking about.</strong> Software that proves technology and artistry aren't opposites — they're
+          the same thing, <em class="phrase-trigger" data-shape="FORGED">forged together</em>.
+        </p>
+        <div class="philosophy-canvas-label">
+          <span id="phil-particle-count">2000</span> particles · <span class="val" id="phil-shape-name">FORGED</span> · convergence <span class="val" id="phil-convergence">0%</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1430,7 +1638,7 @@
           <div class="pricing-tiers">
             <div class="pricing-tier">
               <div class="tier-name">AI Workshop — Half Day</div>
-              <div class="tier-price">$750 – $1,500</div>
+              <div class="tier-price">$1,200 – $2,500</div>
               <div class="tier-desc">
                 Small team, focused topic. Prompting, practical LLM use, or a specific workflow
                 your team wants to get fluent in.
@@ -1438,7 +1646,7 @@
             </div>
             <div class="pricing-tier">
               <div class="tier-name">AI Workshop — Full Day</div>
-              <div class="tier-price">$1,800 – $3,500</div>
+              <div class="tier-price">$2,500 – $5,000</div>
               <div class="tier-desc">
                 Deeper, hands-on. Build something real together — an integration, an internal
                 tool, or a working playbook your team keeps after we leave.
@@ -1446,15 +1654,16 @@
             </div>
             <div class="pricing-tier">
               <div class="tier-name">AI Enablement Engagement</div>
-              <div class="tier-price">$5,000 – $12,000</div>
+              <div class="tier-price">$6,000 – $15,000</div>
               <div class="tier-desc">
-                Multi-session program over a few weeks. Training plus embedded help standing up
-                real workflows your team will use day-to-day.
+                Multi-week program: custom training sessions, hands-on workflow builds, team
+                documentation, and a roadmap — your team leaves with working tools, not just
+                slides.
               </div>
             </div>
             <div class="pricing-tier">
               <div class="tier-name">Discovery Sprint</div>
-              <div class="tier-price">$2,500 – $5,000</div>
+              <div class="tier-price">$3,500 – $8,000</div>
               <div class="tier-desc">
                 A couple of weeks to stress-test an idea — research, prototype, and an honest
                 written assessment of what's worth building and what isn't.
@@ -1465,12 +1674,12 @@
               <div class="tier-price">Scoped to impact</div>
               <div class="tier-desc">
                 Applications, integrations, creative interfaces. Quoted against the outcome, not
-                by the hour. Typical engagements start around $8K and go up with scope.
+                by the hour. Typical engagements start around $8K and scale up to $35K+ with scope.
               </div>
             </div>
             <div class="pricing-tier">
               <div class="tier-name">Advisory / Hourly</div>
-              <div class="tier-price">$125 – $175 / hr</div>
+              <div class="tier-price">$150 – $200 / hr</div>
               <div class="tier-desc">
                 For one-off technical questions, second opinions, architecture reviews, or
                 ongoing retainer-style availability.
@@ -1697,9 +1906,13 @@
       const canvas = document.getElementById('voronoi-canvas');
       const ctx = canvas.getContext('2d');
       let W, H, particles = [], mouse = { x: -1000, y: -1000 }, mouseDown = false;
-      const PARTICLE_COUNT = 100;
-      const DESPAWN_RADIUS = 12; // particles only truly despawn very close to center
-      const FADE_START = 250; // start fading this far out — long gradual fade
+      const IS_MOBILE = window.matchMedia('(max-width: 700px)').matches ||
+                        ('ontouchstart' in window && window.innerWidth < 900);
+      const PARTICLE_COUNT = IS_MOBILE ? 55 : 100;
+      const DESPAWN_RADIUS = 28; // anything inside here is already nearly invisible
+      const FADE_START = 250;
+      const STUCK_VEL2 = 0.00025; // |v|^2 below this counts as "barely moving"
+      const STUCK_FRAMES = 90; // ~1.5s at 60fps before giving up
       const AMBER = { r: 212, g: 134, b: 58 };
       const COPPER = { r: 232, g: 168, b: 92 };
 
@@ -1750,6 +1963,7 @@
           this.r = Math.random() * 2.5 + 1;
           this.t = Math.random(); // 0=amber, 1=copper blend
           this.alive = true;
+          this.stuckCount = 0;
         }
 
         update() {
@@ -1757,19 +1971,28 @@
           const dx = cx - this.x, dy = cy - this.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
-          // Gentle gravity toward center (same as original)
-          if (dist > 100) {
-            this.vx += dx / dist * 0.003;
-            this.vy += dy / dist * 0.003;
+          // NaN / inf guard — recycle any particle whose state has blown up
+          if (!isFinite(this.x) || !isFinite(this.y) ||
+              !isFinite(this.vx) || !isFinite(this.vy)) {
+            this.alive = false;
+            return;
           }
 
-          // Despawn only when very close to center (particle is already nearly invisible)
+          // Despawn when inside the inner ring (now large enough to catch the stuck band)
           if (dist < DESPAWN_RADIUS) {
             this.alive = false;
             return;
           }
 
-          // Mouse interaction
+          // Gentle gravity toward center — always applied, no dead zone.
+          // Slight scaling so very close particles don't overshoot violently.
+          if (dist > 1) {
+            const strength = 0.003 * Math.min(1, dist / 60);
+            this.vx += (dx / dist) * strength;
+            this.vy += (dy / dist) * strength;
+          }
+
+          // Mouse / touch interaction
           const mx = this.x - mouse.x, my = this.y - mouse.y;
           const md = Math.sqrt(mx * mx + my * my);
           if (md < 200 && md > 0) {
@@ -1781,6 +2004,25 @@
           // Damping
           this.vx *= 0.995;
           this.vy *= 0.995;
+
+          // Stuck detection — if a particle barely moves for long enough,
+          // give it a random kick or recycle it (dominant cause of phone "stuck ring")
+          const v2 = this.vx * this.vx + this.vy * this.vy;
+          if (v2 < STUCK_VEL2) {
+            this.stuckCount++;
+            if (this.stuckCount > STUCK_FRAMES) {
+              // Recycle quietly rather than teleport a visible particle
+              this.alive = false;
+              return;
+            }
+            // Small nudge — tiny radial kick away from center to escape the dead band
+            if (dist > 1) {
+              this.vx += (-dx / dist) * 0.02 * Math.random();
+              this.vy += (-dy / dist) * 0.02 * Math.random();
+            }
+          } else {
+            this.stuckCount = 0;
+          }
 
           this.x += this.vx;
           this.y += this.vy;
@@ -1918,23 +2160,26 @@
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, W, H);
 
-        // Tiny inter-particle repulsion
-        const REPULSE_DIST = 40;
-        const REPULSE_STRENGTH = 0.00006;
-        for (let i = 0; i < particles.length; i++) {
-          for (let j = i + 1; j < particles.length; j++) {
-            const dx = particles[i].x - particles[j].x;
-            const dy = particles[i].y - particles[j].y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 < REPULSE_DIST * REPULSE_DIST && d2 > 1) {
-              const d = Math.sqrt(d2);
-              const f = REPULSE_STRENGTH * (1 - d / REPULSE_DIST);
-              const fx = (dx / d) * f;
-              const fy = (dy / d) * f;
-              particles[i].vx += fx;
-              particles[i].vy += fy;
-              particles[j].vx -= fx;
-              particles[j].vy -= fy;
+        // Tiny inter-particle repulsion — skipped on mobile (O(n²) is expensive
+        // and it's the force that most reliably parked particles in the fade ring)
+        if (!IS_MOBILE) {
+          const REPULSE_DIST = 40;
+          const REPULSE_STRENGTH = 0.00006;
+          for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+              const dx = particles[i].x - particles[j].x;
+              const dy = particles[i].y - particles[j].y;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < REPULSE_DIST * REPULSE_DIST && d2 > 1) {
+                const d = Math.sqrt(d2);
+                const f = REPULSE_STRENGTH * (1 - d / REPULSE_DIST);
+                const fx = (dx / d) * f;
+                const fy = (dy / d) * f;
+                particles[i].vx += fx;
+                particles[i].vy += fy;
+                particles[j].vx -= fx;
+                particles[j].vy -= fy;
+              }
             }
           }
         }
@@ -2036,7 +2281,24 @@
       canvas.addEventListener('mouseup', () => mouseDown = false);
       canvas.addEventListener('mouseleave', () => { mouse.x = -1000; mouse.y = -1000; mouseDown = false; });
 
+      // Touch events — phones never fire mousemove, so without these the mouse-repulsion
+      // force that un-sticks particles on desktop never fires on mobile.
+      function updateTouch(e) {
+        if (!e.touches || e.touches.length === 0) return;
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.touches[0].clientX - rect.left;
+        mouse.y = e.touches[0].clientY - rect.top;
+      }
+      canvas.addEventListener('touchstart', (e) => { mouseDown = true; updateTouch(e); }, { passive: true });
+      canvas.addEventListener('touchmove', updateTouch, { passive: true });
+      canvas.addEventListener('touchend', () => {
+        mouseDown = false;
+        // Leave a fading "last touch" position briefly so particles still react after tap
+        setTimeout(() => { mouse.x = -1000; mouse.y = -1000; }, 400);
+      }, { passive: true });
+
       window.addEventListener('resize', () => { resize(); });
+      window.addEventListener('orientationchange', () => { setTimeout(resize, 100); });
 
       resize();
       init();
@@ -2524,12 +2786,626 @@
       }
     })();
 
+    // Mobile nav drawer
+    function toggleMobileNav() {
+      const nav = document.getElementById('mobile-nav');
+      const backdrop = document.getElementById('mobile-nav-backdrop');
+      const btn = document.querySelector('.nav-toggle');
+      const open = nav.classList.toggle('open');
+      backdrop.classList.toggle('open', open);
+      document.body.classList.toggle('nav-open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      nav.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+    function closeMobileNav() {
+      const nav = document.getElementById('mobile-nav');
+      const backdrop = document.getElementById('mobile-nav-backdrop');
+      const btn = document.querySelector('.nav-toggle');
+      nav.classList.remove('open');
+      backdrop.classList.remove('open');
+      document.body.classList.remove('nav-open');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('aria-label', 'Open menu');
+      nav.setAttribute('aria-hidden', 'true');
+    }
+
     function showCopyToast(message) {
       const toast = document.getElementById('copy-toast');
       toast.querySelector('.toast-text').textContent = message;
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2000);
     }
+
+    // ===== PHILOSOPHY SECTION — WEBGL ATTRACTOR-FIELD PARTICLE SIM =====
+    (function initPhilosophySim() {
+      const canvas = document.getElementById('philosophy-canvas');
+      if (!canvas) return;
+      const gl = canvas.getContext('webgl', { antialias: true, alpha: true, premultipliedAlpha: false });
+      if (!gl) return; // graceful: no canvas, plain text still readable
+
+      const PARTICLE_COUNT = 4000;
+      const BRUSH_CYCLE_MS = 7200;             // full paintbrush animation cycle
+      const ANIMATED_SHAPES = { BRUSH: true };
+      const DEFAULT_SHAPE = 'FORGED';          // static word shown on load; brush is a hover-only state now
+      const SWATCH_WORD = 'we build exceptional';
+      const CONVERGE_THRESHOLD_PX = 6;        // particle counted as "arrived" within this distance
+      const BURST_CONV_MIN = 0.90;             // burst only if ≥90% converged
+      const BURST_SPEED = 520;                 // px/sec outward velocity on burst
+      const BURST_HOLD_MS = 650;               // how long to suppress attractor forces after a burst
+      const SPRING_K = 3.2;                    // attractor spring constant (softer = slower convergence)
+      const DAMPING = 2.4;                     // velocity damping
+      const SHAPE_SAFETY_GAP_PX = 48;          // gap between word's right edge and text column's left edge
+      const SHAPE_EDGE_PAD_PX = 32;            // minimum padding from the viewport left edge
+      const COLORS = [
+        [0.83, 0.53, 0.23],  // amber
+        [0.91, 0.66, 0.36],  // copper
+        [0.75, 0.43, 0.16],  // ember
+      ];
+
+      // --- sizing with DPR ---
+      let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+      // Shape-bounds — computed each resize from the text column's actual layout position
+      let shapeLeftPx = 0, shapeRightPx = 0, shapeCenterY = 0, isStacked = false;
+      function computeShapeBounds() {
+        const canvasRect = canvas.getBoundingClientRect();
+        const textEl = document.querySelector('.philosophy-text');
+        if (!textEl) {
+          shapeLeftPx = SHAPE_EDGE_PAD_PX;
+          shapeRightPx = W * 0.5;
+          shapeCenterY = H / 2;
+          isStacked = false;
+          return;
+        }
+        const textRect = textEl.getBoundingClientRect();
+        // Detect stacked (mobile) layout: text is below rather than beside
+        isStacked = textRect.left < canvasRect.left + canvasRect.width * 0.2;
+        if (isStacked) {
+          // Mobile: shape centered, uses most of canvas width
+          shapeLeftPx = W * 0.1;
+          shapeRightPx = W * 0.9;
+          shapeCenterY = H / 2;
+        } else {
+          // Desktop: shape fits between canvas left edge and text column's left edge
+          shapeLeftPx = Math.max(SHAPE_EDGE_PAD_PX, canvasRect.left < 0 ? -canvasRect.left + SHAPE_EDGE_PAD_PX : SHAPE_EDGE_PAD_PX);
+          const textLeftInCanvas = textRect.left - canvasRect.left;
+          shapeRightPx = Math.max(shapeLeftPx + 60, textLeftInCanvas - SHAPE_SAFETY_GAP_PX);
+          shapeCenterY = H / 2;
+        }
+      }
+      function resize() {
+        const rect = canvas.getBoundingClientRect();
+        W = Math.max(1, Math.floor(rect.width));
+        H = Math.max(1, Math.floor(rect.height));
+        canvas.width = W * DPR;
+        canvas.height = H * DPR;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        computeShapeBounds();
+        shapeCache.clear(); // bounds changed → previous rasterizations invalid
+        rebuildShape(currentShape);
+      }
+
+      // --- shape rasterizer: renders a word to an offscreen canvas, samples pixel centers ---
+      const shapeCache = new Map();
+      function sampleShape(word) {
+        const cacheKey = word + '@' + W + 'x' + H + '@' + Math.round(shapeLeftPx) + '-' + Math.round(shapeRightPx);
+        if (shapeCache.has(cacheKey)) return shapeCache.get(cacheKey);
+
+        const off = document.createElement('canvas');
+        off.width = W; off.height = H;
+        const ctx = off.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        // Fit the word so it fits within [shapeLeftPx, shapeRightPx]
+        const maxWordWidth = Math.max(40, shapeRightPx - shapeLeftPx);
+        let fontSize = Math.floor(H * 0.55);
+        ctx.font = `700 ${fontSize}px 'EB Garamond', Georgia, serif`;
+        while (ctx.measureText(word).width > maxWordWidth && fontSize > 10) {
+          fontSize -= 4;
+          ctx.font = `700 ${fontSize}px 'EB Garamond', Georgia, serif`;
+        }
+        ctx.fillText(word, shapeLeftPx, shapeCenterY);
+
+        const img = ctx.getImageData(0, 0, W, H).data;
+        const filled = [];
+        const step = 2;
+        for (let y = 0; y < H; y += step) {
+          for (let x = 0; x < W; x += step) {
+            if (img[(y * W + x) * 4 + 3] > 128) filled.push([x, y]);
+          }
+        }
+        // Fisher-Yates shuffle (seeded) to break periodic sampling artifacts
+        // (previous LCG sampler produced wood-grain moiré when filled.length shared factors with the multiplier)
+        let seed = (word.charCodeAt(0) * 2654435761) ^ filled.length;
+        function rnd() { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); }
+        for (let i = filled.length - 1; i > 0; i--) {
+          const j = Math.floor(rnd() * (i + 1));
+          const tmp = filled[i]; filled[i] = filled[j]; filled[j] = tmp;
+        }
+
+        const targets = new Float32Array(PARTICLE_COUNT * 2);
+        if (filled.length === 0) {
+          const cx = (shapeLeftPx + shapeRightPx) / 2;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            targets[i*2] = cx; targets[i*2+1] = shapeCenterY;
+          }
+        } else {
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const p = filled[i % filled.length];
+            targets[i*2] = p[0];
+            targets[i*2+1] = p[1];
+          }
+        }
+        shapeCache.set(cacheKey, targets);
+        return targets;
+      }
+
+      // --- particles: CPU state, GPU draw ---
+      const px = new Float32Array(PARTICLE_COUNT);
+      const py = new Float32Array(PARTICLE_COUNT);
+      const vx = new Float32Array(PARTICLE_COUNT);
+      const vy = new Float32Array(PARTICLE_COUNT);
+      const col = new Float32Array(PARTICLE_COUNT * 3);
+      let targets = null;
+
+      // init: random scattered positions (seed in a rough disc so first convergence looks intentional)
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * 220;
+        px[i] = 220 + Math.cos(a) * r;
+        py[i] = 220 + Math.sin(a) * r;
+        vx[i] = (Math.random() - 0.5) * 40;
+        vy[i] = (Math.random() - 0.5) * 40;
+        const c = COLORS[i % COLORS.length];
+        col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
+      }
+      let burstUntil = 0; // timestamp (ms) — no attractor force before this time
+
+      // --- animated shape: brush role assignments (stable per particle across cycles) ---
+      // Roles: 0 = handle, 1 = ferrule, 2 = bristle, 3 = swatch
+      const HANDLE_COUNT = 700;
+      const FERRULE_COUNT = 220;
+      const BRISTLE_COUNT = 600;
+      const SWATCH_START_IDX = HANDLE_COUNT + FERRULE_COUNT + BRISTLE_COUNT; // 1520
+      const SWATCH_COUNT = PARTICLE_COUNT - SWATCH_START_IDX;               // 2480
+      const brushRole = new Int8Array(PARTICLE_COUNT);
+      const brushU = new Float32Array(PARTICLE_COUNT);  // longitudinal [0,1]
+      const brushV = new Float32Array(PARTICLE_COUNT);  // lateral
+      const brushDelay = new Float32Array(PARTICLE_COUNT);      // dissolve stagger (swatch)
+      const swatchReturnU = new Float32Array(PARTICLE_COUNT);   // where in bristle cluster each swatch particle returns (along-axis)
+      const swatchReturnV = new Float32Array(PARTICLE_COUNT);   // bristle-lateral return
+      const swatchTargetsRaster = new Float32Array(SWATCH_COUNT * 2); // filled by rasterizeSwatchWord()
+      (function assignBrushRoles() {
+        let idx = 0;
+        for (let i = 0; i < HANDLE_COUNT; i++, idx++) {
+          brushRole[idx] = 0;
+          brushU[idx] = Math.random();
+          brushV[idx] = Math.random() - 0.5;
+        }
+        for (let i = 0; i < FERRULE_COUNT; i++, idx++) {
+          brushRole[idx] = 1;
+          brushU[idx] = Math.random();
+          brushV[idx] = Math.random() - 0.5;
+        }
+        for (let i = 0; i < BRISTLE_COUNT; i++, idx++) {
+          brushRole[idx] = 2;
+          brushU[idx] = Math.random() * Math.random();
+          brushV[idx] = (Math.random() - 0.5) * (1 - brushU[idx] * 0.4);
+        }
+        for (; idx < PARTICLE_COUNT; idx++) {
+          brushRole[idx] = 3;
+          brushDelay[idx] = Math.random();
+          // Each swatch particle returns to a distinct spot across the bristle cluster
+          // (not a single point) — biased toward tip, with lateral spread
+          const ru = Math.random() * Math.random();
+          swatchReturnU[idx] = ru;
+          swatchReturnV[idx] = (Math.random() - 0.5) * (1 - ru * 0.4);
+        }
+      })();
+      const animTargets = new Float32Array(PARTICLE_COUNT * 2);
+
+      // --- rasterize the swatch word into swatch bounds and assign to swatch particles ---
+      let swatchRasterBounds = { l: 0, r: 0, t: 0, b: 0 };
+      function rasterizeSwatchWord(l, t, r, b) {
+        // Only re-raster if bounds changed meaningfully
+        if (Math.abs(l - swatchRasterBounds.l) < 1 && Math.abs(r - swatchRasterBounds.r) < 1 &&
+            Math.abs(t - swatchRasterBounds.t) < 1 && Math.abs(b - swatchRasterBounds.b) < 1) return;
+        swatchRasterBounds = { l, r, t, b };
+        const bw = Math.max(40, r - l), bh = Math.max(20, b - t);
+        const off = document.createElement('canvas');
+        off.width = bw; off.height = bh;
+        const ctx = off.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        let fs = Math.floor(bh * 0.78);
+        ctx.font = `italic 600 ${fs}px 'EB Garamond', Georgia, serif`;
+        while (ctx.measureText(SWATCH_WORD).width > bw * 0.98 && fs > 10) {
+          fs -= 2;
+          ctx.font = `italic 600 ${fs}px 'EB Garamond', Georgia, serif`;
+        }
+        const wordW = ctx.measureText(SWATCH_WORD).width;
+        const startX = (bw - wordW) / 2;
+        ctx.fillText(SWATCH_WORD, startX, bh / 2);
+        const img = ctx.getImageData(0, 0, bw, bh).data;
+        const filled = [];
+        const step = 2;
+        for (let y = 0; y < bh; y += step) {
+          for (let x = 0; x < bw; x += step) {
+            if (img[(y * bw + x) * 4 + 3] > 128) filled.push([l + x, t + y]);
+          }
+        }
+        // Shuffle (seeded) so particle-to-pixel mapping has no periodic artifacts
+        let seed = (SWATCH_WORD.length * 2654435761) ^ filled.length ^ (bw * 7919);
+        function rnd() { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); }
+        for (let i = filled.length - 1; i > 0; i--) {
+          const j = Math.floor(rnd() * (i + 1));
+          const tmp = filled[i]; filled[i] = filled[j]; filled[j] = tmp;
+        }
+        if (filled.length === 0) {
+          const cx = (l + r) / 2, cy = (t + b) / 2;
+          for (let k = 0; k < SWATCH_COUNT; k++) {
+            swatchTargetsRaster[k*2] = cx;
+            swatchTargetsRaster[k*2+1] = cy;
+          }
+        } else {
+          // Also sort by x so paintProgress check (left-to-right reveal) works naturally
+          // — but we want some randomness within a column, so: bucket by x-band, then shuffle within bands
+          // Simpler: just assign directly; paintProgress compares absolute x per particle.
+          for (let k = 0; k < SWATCH_COUNT; k++) {
+            const p = filled[k % filled.length];
+            swatchTargetsRaster[k*2] = p[0];
+            swatchTargetsRaster[k*2+1] = p[1];
+          }
+        }
+      }
+
+      function computeBrushTargets(tCycleMs) {
+        const cycle = (tCycleMs / BRUSH_CYCLE_MS) % 1;
+
+        // --- safe region: below section title, above section bottom, between shape bounds ---
+        const canvasRect = canvas.getBoundingClientRect();
+        const gridEl = document.querySelector('.philosophy-grid');
+        const titleEl = document.querySelector('#philosophy .section-title');
+        let safeTopY = 20;
+        if (gridEl) {
+          safeTopY = Math.max(safeTopY, gridEl.getBoundingClientRect().top - canvasRect.top + 8);
+        } else if (titleEl) {
+          const tr = titleEl.getBoundingClientRect();
+          safeTopY = Math.max(safeTopY, tr.bottom - canvasRect.top + 16);
+        }
+        const safeBottomY = H - 30;
+        const safeLeftX = shapeLeftPx;
+        const safeRightX = shapeRightPx;
+        const safeW = safeRightX - safeLeftX;
+
+        // Proportion brush dimensions to the safe region
+        const handleLen = Math.min(safeW * 0.28, (safeBottomY - safeTopY) * 0.55);
+        const bristleLen = handleLen * 0.18;
+        const ferruleLen = handleLen * 0.05;
+        const totalLen = handleLen + ferruleLen + bristleLen;
+        const handleHalfW = Math.min(safeW * 0.018, (safeBottomY - safeTopY) * 0.018);
+        const bristleHalfW = handleHalfW * 2.2;
+
+        // Angle with wobble + phase-specific tilt
+        const baseAngle = -Math.PI / 3; // -60°: up and to the right
+        const wobble = Math.sin(tCycleMs * 0.0017) * 0.09; // ±~5°, period ~3.7s
+        let phaseTilt = 0;
+        let brushX, paintProgress, dissolveProgress;
+
+        // --- phase logic (same structure as before) ---
+        if (cycle < 0.28) {
+          const p = cycle / 0.28;
+          paintProgress = p;
+          dissolveProgress = 0;
+          phaseTilt = -0.06 * (1 - Math.abs(2*p - 1)); // slight forward tilt during paint
+          brushX = 0; // computed below
+        } else if (cycle < 0.42) {
+          paintProgress = 1;
+          dissolveProgress = 0;
+          phaseTilt = 0;
+        } else if (cycle < 0.85) {
+          paintProgress = 1;
+          dissolveProgress = (cycle - 0.42) / 0.43;
+          phaseTilt = 0.04 * Math.sin(dissolveProgress * Math.PI); // gentle upward lilt during dissolve
+        } else {
+          paintProgress = 0;
+          dissolveProgress = 1;
+          phaseTilt = 0.05;
+        }
+        const angle = baseAngle + wobble + phaseTilt;
+        const dirX = Math.cos(angle);
+        const dirY = Math.sin(angle);
+        const perpX = -dirY, perpY = dirX;
+
+        // Given the angle, compute max-tip-x so handleEnd stays within safeRightX
+        // and min-tip-y so handleEnd stays below safeTopY
+        const tipXMin = safeLeftX + bristleLen * Math.max(0, -dirX); // bristle can point slightly left, but dirX>0 so no issue
+        const tipXMax = safeRightX - dirX * totalLen;
+        const tipYMin = safeTopY - dirY * totalLen; // dirY < 0, so this is > safeTopY
+        const tipYMax = safeBottomY - 8;
+        // Anchor tip vertically: place such that handleEnd.y = safeTopY + 6px
+        const tipY = Math.max(tipYMin + 6, Math.min(tipYMax, tipYMin + (tipYMax - tipYMin) * 0.35));
+
+        // Horizontal sweep range for painting
+        const sweepLeft = tipXMin + 6;
+        const sweepRight = Math.max(sweepLeft + 40, tipXMax);
+        const sweepWidth = sweepRight - sweepLeft;
+        if (cycle < 0.28) {
+          brushX = sweepLeft + (cycle / 0.28) * sweepWidth;
+        } else if (cycle < 0.42) {
+          brushX = sweepRight;
+        } else if (cycle < 0.85) {
+          brushX = sweepRight;
+        } else {
+          brushX = sweepRight - ((cycle - 0.85) / 0.15) * sweepWidth;
+        }
+        const tipX = brushX;
+
+        // --- swatch word bounds (rasterize region) ---
+        // The word sits centered on the sweep path, vertically just below the brush tip
+        // We want the tip to move just above the word row so the brush visibly paints it
+        const swatchH = Math.min((safeBottomY - tipY) * 0.65, safeW * 0.10);
+        const swatchL = sweepLeft;
+        const swatchR = sweepRight;
+        const swatchT = tipY + handleHalfW * 1.5;
+        const swatchB = swatchT + swatchH;
+        rasterizeSwatchWord(swatchL, swatchT, swatchR, swatchB);
+
+        // Brush geometry chain
+        const ferruleStartX = tipX + dirX * bristleLen;
+        const ferruleStartY = tipY + dirY * bristleLen;
+        const ferruleEndX = ferruleStartX + dirX * ferruleLen;
+        const ferruleEndY = ferruleStartY + dirY * ferruleLen;
+        const handleEndX = ferruleEndX + dirX * handleLen;
+        const handleEndY = ferruleEndY + dirY * handleLen;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const role = brushRole[i];
+          let tx, ty;
+          if (role === 0) {
+            const u = brushU[i], v = brushV[i];
+            const bx = ferruleEndX + u * (handleEndX - ferruleEndX);
+            const by = ferruleEndY + u * (handleEndY - ferruleEndY);
+            tx = bx + perpX * v * handleHalfW * 2;
+            ty = by + perpY * v * handleHalfW * 2;
+          } else if (role === 1) {
+            const u = brushU[i], v = brushV[i];
+            const bx = ferruleStartX + u * (ferruleEndX - ferruleStartX);
+            const by = ferruleStartY + u * (ferruleEndY - ferruleStartY);
+            tx = bx + perpX * v * handleHalfW * 2.6;
+            ty = by + perpY * v * handleHalfW * 2.6;
+          } else if (role === 2) {
+            const u = brushU[i], v = brushV[i];
+            const bx = tipX + u * (ferruleStartX - tipX);
+            const by = tipY + u * (ferruleStartY - tipY);
+            tx = bx + perpX * v * bristleHalfW * 2;
+            ty = by + perpY * v * bristleHalfW * 2;
+          } else {
+            // swatch particle — word-pixel target
+            const sIdx = i - SWATCH_START_IDX;
+            const sxAbs = swatchTargetsRaster[sIdx*2];
+            const syAbs = swatchTargetsRaster[sIdx*2+1];
+            // x-based paint reveal: particle is painted once brush has passed its x position
+            const paintedAbsX = sweepLeft + paintProgress * sweepWidth;
+            const painted = sxAbs <= paintedAbsX || paintProgress >= 1;
+            const dLocal = dissolveProgress === 0 ? 0 :
+              Math.max(0, Math.min(1, (dissolveProgress - brushDelay[i]) / Math.max(0.02, 1 - brushDelay[i])));
+            // Return target — scattered across bristle area, NOT a single point
+            const ru = swatchReturnU[i], rv = swatchReturnV[i];
+            const bristleTargetX = tipX + ru * (ferruleStartX - tipX) + perpX * rv * bristleHalfW * 2;
+            const bristleTargetY = tipY + ru * (ferruleStartY - tipY) + perpY * rv * bristleHalfW * 2;
+            if (!painted) {
+              tx = bristleTargetX; ty = bristleTargetY;
+            } else if (dLocal >= 1) {
+              tx = bristleTargetX; ty = bristleTargetY;
+            } else {
+              tx = sxAbs + (bristleTargetX - sxAbs) * dLocal;
+              ty = syAbs + (bristleTargetY - syAbs) * dLocal;
+            }
+          }
+          animTargets[i*2] = tx;
+          animTargets[i*2+1] = ty;
+        }
+      }
+
+      // --- GL setup ---
+      const vs = `
+        attribute vec2 aPos;
+        attribute vec3 aCol;
+        uniform vec2 uRes;
+        uniform float uDpr;
+        varying vec3 vCol;
+        void main() {
+          vec2 clip = (aPos / uRes) * 2.0 - 1.0;
+          clip.y = -clip.y;
+          gl_Position = vec4(clip, 0.0, 1.0);
+          gl_PointSize = 2.6 * uDpr;
+          vCol = aCol;
+        }
+      `;
+      const fs = `
+        precision mediump float;
+        varying vec3 vCol;
+        void main() {
+          vec2 d = gl_PointCoord - vec2(0.5);
+          float r = length(d);
+          if (r > 0.5) discard;
+          float a = smoothstep(0.5, 0.15, r);
+          gl_FragColor = vec4(vCol, a);
+        }
+      `;
+      function compile(type, src) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src); gl.compileShader(s);
+        return s;
+      }
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(prog);
+      gl.useProgram(prog);
+      const aPos = gl.getAttribLocation(prog, 'aPos');
+      const aCol = gl.getAttribLocation(prog, 'aCol');
+      const uRes = gl.getUniformLocation(prog, 'uRes');
+      const uDpr = gl.getUniformLocation(prog, 'uDpr');
+
+      const posBuf = gl.createBuffer();
+      const posData = new Float32Array(PARTICLE_COUNT * 2);
+      const colBuf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, col, gl.STATIC_DRAW);
+
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive glow
+
+      // --- shape state ---
+      let currentShape = DEFAULT_SHAPE;
+      let isAnimated = false;
+      let convergence = 0;
+      function rebuildShape(word) {
+        currentShape = word;
+        isAnimated = !!ANIMATED_SHAPES[word];
+        if (isAnimated) {
+          targets = animTargets; // per-frame updates
+        } else {
+          targets = sampleShape(word);
+        }
+        const label = document.getElementById('phil-shape-name');
+        if (label) label.textContent = word === 'BRUSH' ? 'paintbrush' : word;
+      }
+
+      function burst() {
+        const cx = (shapeLeftPx + shapeRightPx) / 2, cy = shapeCenterY;
+        // three flavors, chosen at random
+        const variant = Math.floor(Math.random() * 3);
+        if (variant === 0) {
+          // RADIAL — classic outward spray
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const dx = px[i] - cx, dy = py[i] - cy;
+            const d = Math.max(Math.hypot(dx, dy), 0.5);
+            vx[i] += (dx / d) * BURST_SPEED;
+            vy[i] += (dy / d) * BURST_SPEED;
+          }
+        } else if (variant === 1) {
+          // SPIRAL — tangential kick (perpendicular to radius) with slight outward
+          const dir = Math.random() < 0.5 ? 1 : -1;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const dx = px[i] - cx, dy = py[i] - cy;
+            const d = Math.max(Math.hypot(dx, dy), 0.5);
+            // tangent = rotate radius 90°
+            const tx = -dy / d, ty = dx / d;
+            vx[i] += tx * BURST_SPEED * 0.95 * dir + (dx / d) * BURST_SPEED * 0.35;
+            vy[i] += ty * BURST_SPEED * 0.95 * dir + (dy / d) * BURST_SPEED * 0.35;
+          }
+        } else {
+          // CROSS-SWEEP — particles fling laterally across the center along a random axis
+          const angle = Math.random() * Math.PI;
+          const ax = Math.cos(angle), ay = Math.sin(angle);
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const dx = px[i] - cx, dy = py[i] - cy;
+            // signed projection onto axis → particles on one side go one way, other side the other
+            const s = dx * ax + dy * ay;
+            const sign = s >= 0 ? 1 : -1;
+            vx[i] += ax * BURST_SPEED * sign;
+            vy[i] += ay * BURST_SPEED * sign;
+          }
+        }
+        burstUntil = performance.now() + BURST_HOLD_MS;
+      }
+
+      function setShape(word, opts = {}) {
+        if (word === currentShape) return;
+        const shouldBurst = opts.burst !== false && convergence >= BURST_CONV_MIN;
+        rebuildShape(word);
+        if (shouldBurst) burst();
+      }
+
+      // --- main loop ---
+      let lastT = performance.now();
+      function frame(t) {
+        let dt = (t - lastT) / 1000;
+        lastT = t;
+        if (dt > 0.05) dt = 0.05; // clamp on tab-switch resume
+
+        // Animated shapes update their targets each frame
+        if (isAnimated && currentShape === 'BRUSH') {
+          computeBrushTargets(t);
+        }
+
+        let arrived = 0;
+        const holding = t < burstUntil;
+        // during the burst-hold window, suppress the spring so particles keep flying;
+        // fade it back in smoothly once hold ends
+        const holdFade = holding
+          ? 0
+          : Math.min(1, (t - burstUntil) / 350);
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const tx = targets[i*2], ty = targets[i*2+1];
+          const dx = tx - px[i], dy = ty - py[i];
+          const d2 = dx*dx + dy*dy;
+          // spring + damping (spring gated by hold-fade; damping lighter during hold for flowy motion)
+          vx[i] += dx * SPRING_K * holdFade * dt;
+          vy[i] += dy * SPRING_K * holdFade * dt;
+          const damp = holding ? DAMPING * 0.45 : DAMPING;
+          vx[i] *= Math.exp(-damp * dt);
+          vy[i] *= Math.exp(-damp * dt);
+          px[i] += vx[i] * dt;
+          py[i] += vy[i] * dt;
+          // NaN guard (see hero-sim bug)
+          if (!isFinite(px[i]) || !isFinite(py[i])) {
+            px[i] = tx; py[i] = ty; vx[i] = 0; vy[i] = 0;
+          }
+          if (d2 < CONVERGE_THRESHOLD_PX * CONVERGE_THRESHOLD_PX) arrived++;
+          posData[i*2] = px[i]; posData[i*2+1] = py[i];
+        }
+
+        convergence = arrived / PARTICLE_COUNT;
+        const cvEl = document.getElementById('phil-convergence');
+        if (cvEl) cvEl.textContent = Math.round(convergence * 100) + '%';
+
+        // draw
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(prog);
+        gl.uniform2f(uRes, W, H);
+        gl.uniform1f(uDpr, DPR);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, posData, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+        gl.enableVertexAttribArray(aCol);
+        gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 0, 0);
+
+        gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+
+        requestAnimationFrame(frame);
+      }
+
+      // --- hover wiring ---
+      document.querySelectorAll('.phrase-trigger').forEach(el => {
+        el.addEventListener('mouseenter', () => {
+          document.querySelectorAll('.phrase-trigger.active').forEach(a => a.classList.remove('active'));
+          el.classList.add('active');
+          const shape = el.getAttribute('data-shape');
+          if (shape) setShape(shape);
+        });
+      });
+
+      // --- init ---
+      window.addEventListener('resize', resize);
+      resize();
+      rebuildShape(currentShape);
+      // Pause when tab hidden to save CPU
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) lastT = performance.now();
+      });
+      requestAnimationFrame((t) => { lastT = t; frame(t); });
+    })();
   </script>
 </body>
 </html>
