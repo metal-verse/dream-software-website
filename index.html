@@ -374,9 +374,19 @@
         max-height: 420px;
         z-index: 2;
         pointer-events: none;
+        /* Heavy cover: text fades out within the top ~12% of the footer
+           and is fully hidden beneath that. */
+        background: linear-gradient(to bottom,
+          rgba(26,26,26,0) 0%,
+          rgba(26,26,26,0.95) 12%,
+          rgba(26,26,26,1) 20%,
+          rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        background: linear-gradient(to top, rgba(26,26,26,0.9), rgba(26,26,26,0.6));
+        /* Fade in only once the user has scrolled a bit into the section */
+        opacity: 0;
+        transition: opacity 0.35s ease;
       }
+      #philosophy-canvas.visible { opacity: 1; }
 
       /* Make highlighted words clearly tappable on touch */
       .phrase-trigger {
@@ -2866,10 +2876,17 @@
       if (!gl) return; // graceful: no canvas, plain text still readable
 
       const PARTICLE_COUNT = 4000;
-      const BRUSH_CYCLE_MS = 7200;             // full paintbrush animation cycle
+      const BRUSH_CYCLE_MS = 10500;            // full paintbrush animation cycle
       const ANIMATED_SHAPES = { BRUSH: true };
-      const DEFAULT_SHAPE = 'FORGED';          // static word shown on load; brush is a hover-only state now
+      const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_LINES = ['we build', 'exceptional'];
+      // Phase boundaries (fractions of cycle)
+      const PH_PAINT_END    = 0.36;
+      const PH_MOVE_TO_REST = 0.44;
+      const PH_REST_END     = 0.68;   // words visible ~2.5s
+      const PH_PICKUP_END   = 0.93;
+      const PAINT_STROKES   = 2;
+      const PICKUP_STROKES  = 2;
       const CONVERGE_THRESHOLD_PX = 6;        // particle counted as "arrived" within this distance
       const BURST_CONV_MIN = 0.90;             // burst only if ≥90% converged
       const BURST_SPEED = 520;                 // px/sec outward velocity on burst
@@ -3017,6 +3034,8 @@
       const swatchReturnU = new Float32Array(PARTICLE_COUNT);   // where in bristle cluster each swatch particle returns (along-axis)
       const swatchReturnV = new Float32Array(PARTICLE_COUNT);   // bristle-lateral return
       const swatchTargetsRaster = new Float32Array(SWATCH_COUNT * 2); // filled by rasterizeSwatchWord()
+      const swatchPaintOrder   = new Float32Array(SWATCH_COUNT);      // [0,1]: when pixel is painted
+      const swatchPickupOrder  = new Float32Array(SWATCH_COUNT);      // [0,1]: when pixel is picked up
       (function assignBrushRoles() {
         let idx = 0;
         for (let i = 0; i < HANDLE_COUNT; i++, idx++) {
@@ -3104,12 +3123,23 @@
           for (let k = 0; k < SWATCH_COUNT; k++) {
             swatchTargetsRaster[k*2] = cx;
             swatchTargetsRaster[k*2+1] = cy;
+            swatchPaintOrder[k] = k / SWATCH_COUNT;
+            swatchPickupOrder[k] = 1 - k / SWATCH_COUNT;
           }
         } else {
+          const rw = Math.max(1, r - l), rh = Math.max(1, b - t);
           for (let k = 0; k < SWATCH_COUNT; k++) {
             const p = filled[k % filled.length];
             swatchTargetsRaster[k*2] = p[0];
             swatchTargetsRaster[k*2+1] = p[1];
+            // Diagonal ordering: 0 at bottom-left, 1 at top-right
+            const xFrac = (p[0] - l) / rw;
+            const yFrac = (p[1] - t) / rh;
+            const diag = (xFrac + (1 - yFrac)) * 0.5;
+            const jitter = (rnd() - 0.5) * 0.14; // some jitter so order isn't a hard wave
+            const po = Math.max(0, Math.min(1, diag + jitter));
+            swatchPaintOrder[k]  = po;
+            swatchPickupOrder[k] = 1 - po; // pickup starts from TR (near rest), ends at BL
           }
         }
         swatchRasterBounds = { l, r, t, b };
@@ -3118,7 +3148,7 @@
       function computeBrushTargets(tCycleMs) {
         const cycle = (tCycleMs / BRUSH_CYCLE_MS) % 1;
 
-        // --- safe region: below section title, above section bottom, between shape bounds ---
+        // --- safe region ---
         const canvasRect = canvas.getBoundingClientRect();
         const gridEl = document.querySelector('.philosophy-grid');
         const titleEl = document.querySelector('#philosophy .section-title');
@@ -3133,80 +3163,122 @@
         const safeLeftX = shapeLeftPx;
         const safeRightX = shapeRightPx;
         const safeW = safeRightX - safeLeftX;
+        const safeH = safeBottomY - safeTopY;
 
-        // Proportion brush dimensions to the safe region
-        const handleLen = Math.min(safeW * 0.28, (safeBottomY - safeTopY) * 0.55);
-        const bristleLen = handleLen * 0.18;
-        const ferruleLen = handleLen * 0.05;
-        const totalLen = handleLen + ferruleLen + bristleLen;
-        const handleHalfW = Math.min(safeW * 0.018, (safeBottomY - safeTopY) * 0.018);
+        // Brush dimensions
+        const handleLen   = Math.min(safeW * 0.26, safeH * 0.55);
+        const bristleLen  = handleLen * 0.18;
+        const ferruleLen  = handleLen * 0.05;
+        const totalLen    = handleLen + ferruleLen + bristleLen;
+        const handleHalfW = Math.min(safeW * 0.017, safeH * 0.017);
         const bristleHalfW = handleHalfW * 2.2;
 
-        // Angle with wobble + phase-specific tilt
-        const baseAngle = -Math.PI / 3; // -60°: up and to the right
-        const wobble = Math.sin(tCycleMs * 0.0017) * 0.09; // ±~5°, period ~3.7s
-        let phaseTilt = 0;
-        let brushX, paintProgress, dissolveProgress;
+        // --- SWATCH: the words take up the majority of the safe area ---
+        // Leave a column on the right (~22% of safeW) for the brush's rest position
+        const swatchL = safeLeftX + safeW * 0.02;
+        const swatchR = safeLeftX + safeW * 0.72;
+        const swatchT = safeTopY + safeH * 0.12;
+        const swatchB = safeTopY + safeH * 0.88;
+        rasterizeSwatchWord(swatchL, swatchT, swatchR, swatchB);
 
-        // --- phase logic (same structure as before) ---
-        if (cycle < 0.28) {
-          const p = cycle / 0.28;
-          paintProgress = p;
-          dissolveProgress = 0;
-          phaseTilt = -0.06 * (1 - Math.abs(2*p - 1)); // slight forward tilt during paint
-          brushX = 0; // computed below
-        } else if (cycle < 0.42) {
-          paintProgress = 1;
-          dissolveProgress = 0;
-          phaseTilt = 0;
-        } else if (cycle < 0.85) {
-          paintProgress = 1;
-          dissolveProgress = (cycle - 0.42) / 0.43;
-          phaseTilt = 0.04 * Math.sin(dissolveProgress * Math.PI); // gentle upward lilt during dissolve
-        } else {
-          paintProgress = 0;
-          dissolveProgress = 1;
-          phaseTilt = 0.05;
+        // Diagonal endpoints for paint/pickup strokes (in "tip-space", padded so handle stays safe)
+        const strokeBL_x = swatchL + safeW * 0.04;  // bottom-left of swatch, slightly inset
+        const strokeBL_y = swatchB - safeH * 0.02;
+        const strokeTR_x = swatchR - safeW * 0.02;
+        const strokeTR_y = swatchT + safeH * 0.02;
+
+        // Rest position — tip parked just right of the words, close to vertical
+        const restTipX = safeRightX - Math.max(40, safeW * 0.04);
+        const restTipY = safeTopY + safeH * 0.55;
+        const restAngle = -Math.PI / 2.35;  // ~-77° (close to vertical, leaning slightly right)
+
+        // --- phase logic: compute tipX/tipY/angle, paintProgress, pickupProgress ---
+        const baseAngle = -Math.PI / 3;     // -60° for paint/pickup strokes
+        const wobble = Math.sin(tCycleMs * 0.0017) * 0.085; // ±~5°
+
+        let tipX, tipY, angle;
+        let paintProgress;   // 0→1 monotone through paint phase; 1 after
+        let pickupProgress;  // 0 until pickup starts; 1 at end of pickup
+
+        // Helper: triangle wave over [0,1] with N full strokes (0→1→0→1→...)
+        // For PAINT: we want to end at TR (closer to rest). With 2 strokes: BL→TR→BL→TR.
+        // With `strokes` as number of half-traversals: strokes=4 ⇒ BL→TR→BL→TR→ (ends at... TR? with 4 half-strokes starts at 0, ends at 4*1 mod 2? Let's think)
+        // Using triangle: trip(u) oscillates 0→1→0 with period 1.
+        // We want 2 full round-trips = 4 half-strokes for paint: use numHalf = 4, position = (strokes even? fracOfStroke : 1-fracOfStroke)
+        function diagPos(phaseT, numHalfStrokes) {
+          const s = phaseT * numHalfStrokes;
+          const k = Math.floor(s);
+          const f = s - k;
+          return (k % 2 === 0) ? f : (1 - f);
         }
-        const angle = baseAngle + wobble + phaseTilt;
+
+        if (cycle < PH_PAINT_END) {
+          // PAINT — zigzag BL↔TR, paint pixels in diagonal order
+          const phaseT = cycle / PH_PAINT_END;
+          // 2 full round-trips = 4 half-strokes, ending at TR-ish
+          const p = diagPos(phaseT, PAINT_STROKES * 2);
+          tipX = strokeBL_x + p * (strokeTR_x - strokeBL_x);
+          tipY = strokeBL_y + p * (strokeTR_y - strokeBL_y);
+          // Angle: baseAngle + lean into direction of motion
+          // motion direction sign: ds/dt along triangle wave
+          const dSign = (Math.floor(phaseT * PAINT_STROKES * 2) % 2 === 0) ? 1 : -1;
+          const dirLean = dSign * 0.04;
+          angle = baseAngle + wobble + dirLean;
+          paintProgress = phaseT;
+          pickupProgress = 0;
+        } else if (cycle < PH_MOVE_TO_REST) {
+          // TRANSITION — lerp from end-of-paint (near TR) to rest position
+          const phaseT = (cycle - PH_PAINT_END) / (PH_MOVE_TO_REST - PH_PAINT_END);
+          const eased = phaseT * phaseT * (3 - 2 * phaseT); // smoothstep
+          const startX = strokeTR_x, startY = strokeTR_y;
+          tipX = startX + eased * (restTipX - startX);
+          tipY = startY + eased * (restTipY - startY);
+          angle = (baseAngle + wobble) * (1 - eased) + restAngle * eased;
+          paintProgress = 1;
+          pickupProgress = 0;
+        } else if (cycle < PH_REST_END) {
+          // REST — brush parked right of words, words fully visible
+          tipX = restTipX;
+          tipY = restTipY;
+          angle = restAngle + wobble * 0.6;
+          paintProgress = 1;
+          pickupProgress = 0;
+        } else if (cycle < PH_PICKUP_END) {
+          // PICKUP — zigzag diagonally across the words, pixels dissolve in order
+          const phaseT = (cycle - PH_REST_END) / (PH_PICKUP_END - PH_REST_END);
+          // Start at TR (near rest), zigzag. numHalfStrokes = PICKUP_STROKES * 2.
+          // For pickup we want to start at TR (p=1) and end at BL (p=0):
+          // Using (1 - diagPos) flips it.
+          const p = 1 - diagPos(phaseT, PICKUP_STROKES * 2);
+          tipX = strokeBL_x + p * (strokeTR_x - strokeBL_x);
+          tipY = strokeBL_y + p * (strokeTR_y - strokeBL_y);
+          const dSign = (Math.floor(phaseT * PICKUP_STROKES * 2) % 2 === 0) ? -1 : 1;
+          angle = baseAngle + wobble + dSign * 0.04;
+          paintProgress = 1;
+          pickupProgress = phaseT;
+        } else {
+          // RETURN — from end-of-pickup (BL-ish) back to stroke start for next cycle
+          const phaseT = (cycle - PH_PICKUP_END) / (1 - PH_PICKUP_END);
+          const eased = phaseT * phaseT * (3 - 2 * phaseT);
+          // End-of-pickup position:
+          const endP = 1 - diagPos(1, PICKUP_STROKES * 2); // where pickup left off
+          const endX = strokeBL_x + endP * (strokeTR_x - strokeBL_x);
+          const endY = strokeBL_y + endP * (strokeTR_y - strokeBL_y);
+          tipX = endX + eased * (strokeBL_x - endX);
+          tipY = endY + eased * (strokeBL_y - endY);
+          angle = baseAngle + wobble;
+          paintProgress = 1;
+          pickupProgress = 1;
+        }
+
+        // Clamp tipX/tipY to safe region (accounting for handle extent at current angle)
         const dirX = Math.cos(angle);
         const dirY = Math.sin(angle);
         const perpX = -dirY, perpY = dirX;
-
-        // Given the angle, compute max-tip-x so handleEnd stays within safeRightX
-        // and min-tip-y so handleEnd stays below safeTopY
-        const tipXMin = safeLeftX + bristleLen * Math.max(0, -dirX); // bristle can point slightly left, but dirX>0 so no issue
-        const tipXMax = safeRightX - dirX * totalLen;
-        const tipYMin = safeTopY - dirY * totalLen; // dirY < 0, so this is > safeTopY
-        const tipYMax = safeBottomY - 8;
-        // Anchor tip vertically: place such that handleEnd.y = safeTopY + 6px
-        const tipY = Math.max(tipYMin + 6, Math.min(tipYMax, tipYMin + (tipYMax - tipYMin) * 0.35));
-
-        // Horizontal sweep range for painting
-        const sweepLeft = tipXMin + 6;
-        const sweepRight = Math.max(sweepLeft + 40, tipXMax);
-        const sweepWidth = sweepRight - sweepLeft;
-        if (cycle < 0.28) {
-          brushX = sweepLeft + (cycle / 0.28) * sweepWidth;
-        } else if (cycle < 0.42) {
-          brushX = sweepRight;
-        } else if (cycle < 0.85) {
-          brushX = sweepRight;
-        } else {
-          brushX = sweepRight - ((cycle - 0.85) / 0.15) * sweepWidth;
-        }
-        const tipX = brushX;
-
-        // --- swatch word bounds (rasterize region) ---
-        // The word sits centered on the sweep path, vertically just below the brush tip
-        // We want the tip to move just above the word row so the brush visibly paints it
-        // Room for two lines — taller than the single-line version
-        const swatchH = Math.max(64, Math.min((safeBottomY - tipY) * 0.85, safeW * 0.18));
-        const swatchL = sweepLeft;
-        const swatchR = sweepRight;
-        const swatchT = tipY + handleHalfW * 1.5;
-        const swatchB = swatchT + swatchH;
-        rasterizeSwatchWord(swatchL, swatchT, swatchR, swatchB);
+        const handleEndDx = dirX * totalLen;
+        const handleEndDy = dirY * totalLen;
+        tipX = Math.max(safeLeftX + 4, Math.min(safeRightX - Math.max(0, handleEndDx) - 4, tipX));
+        tipY = Math.max(safeTopY - Math.min(0, handleEndDy) + 4, Math.min(safeBottomY - 4, tipY));
 
         // Brush geometry chain
         const ferruleStartX = tipX + dirX * bristleLen;
@@ -3215,6 +3287,10 @@
         const ferruleEndY = ferruleStartY + dirY * ferruleLen;
         const handleEndX = ferruleEndX + dirX * handleLen;
         const handleEndY = ferruleEndY + dirY * handleLen;
+
+        // Smoothing windows for paint/pickup transitions (smaller = snappier reveal)
+        const PAINT_WINDOW = 0.06;
+        const PICKUP_WINDOW = 0.06;
 
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           const role = brushRole[i];
@@ -3238,27 +3314,26 @@
             tx = bx + perpX * v * bristleHalfW * 2;
             ty = by + perpY * v * bristleHalfW * 2;
           } else {
-            // swatch particle — word-pixel target
+            // swatch particle
             const sIdx = i - SWATCH_START_IDX;
             const sxAbs = swatchTargetsRaster[sIdx*2];
             const syAbs = swatchTargetsRaster[sIdx*2+1];
-            // x-based paint reveal: particle is painted once brush has passed its x position
-            const paintedAbsX = sweepLeft + paintProgress * sweepWidth;
-            const painted = sxAbs <= paintedAbsX || paintProgress >= 1;
-            const dLocal = dissolveProgress === 0 ? 0 :
-              Math.max(0, Math.min(1, (dissolveProgress - brushDelay[i]) / Math.max(0.02, 1 - brushDelay[i])));
-            // Return target — scattered across bristle area, NOT a single point
+            const po = swatchPaintOrder[sIdx];
+            const uo = swatchPickupOrder[sIdx];
+            // Return point scattered across bristle cluster (distinct per particle)
             const ru = swatchReturnU[i], rv = swatchReturnV[i];
             const bristleTargetX = tipX + ru * (ferruleStartX - tipX) + perpX * rv * bristleHalfW * 2;
             const bristleTargetY = tipY + ru * (ferruleStartY - tipY) + perpY * rv * bristleHalfW * 2;
-            if (!painted) {
-              tx = bristleTargetX; ty = bristleTargetY;
-            } else if (dLocal >= 1) {
-              tx = bristleTargetX; ty = bristleTargetY;
-            } else {
-              tx = sxAbs + (bristleTargetX - sxAbs) * dLocal;
-              ty = syAbs + (bristleTargetY - syAbs) * dLocal;
-            }
+            // Paint amount 0→1 (0 = in bristles, 1 = at word)
+            const pAmt = Math.max(0, Math.min(1, (paintProgress - po) / PAINT_WINDOW));
+            // Pickup amount 0→1 (0 = at word, 1 = back in bristles)
+            const uAmt = Math.max(0, Math.min(1, (pickupProgress - uo) / PICKUP_WINDOW));
+            // Combined: before pickup, particle sits between bristle and word by pAmt.
+            // Once pickup exceeds its order, the particle lerps back to bristles by uAmt.
+            // effective = pAmt * (1 - uAmt); 1 = at word, 0 = in bristles
+            const atWord = pAmt * (1 - uAmt);
+            tx = bristleTargetX + atWord * (sxAbs - bristleTargetX);
+            ty = bristleTargetY + atWord * (syAbs - bristleTargetY);
           }
           animTargets[i*2] = tx;
           animTargets[i*2+1] = ty;
@@ -3317,7 +3392,7 @@
 
       // --- shape state ---
       let currentShape = DEFAULT_SHAPE;
-      let isAnimated = false;
+      let isAnimated = true;
       let convergence = 0;
       function rebuildShape(word) {
         currentShape = word;
@@ -3456,6 +3531,25 @@
           activatePhrase(el);
         });
       });
+
+      // --- Reveal the sticky footer only after the user has scrolled past
+      //     the first paragraph on mobile. Keep it visible while the section
+      //     is in view; sticky handles the anchoring at the section's end. ---
+      const firstPara = document.querySelector('.philosophy-text > p:first-of-type');
+      const mqlPhil = window.matchMedia('(max-width: 880px)');
+      function syncCanvasVisibility() {
+        if (!firstPara) return;
+        if (!mqlPhil.matches) { canvas.classList.remove('visible'); return; }
+        const rect = firstPara.getBoundingClientRect();
+        // Reveal once the first paragraph's bottom has crossed ~55% of the viewport
+        // (i.e., the user is clearly reading past it)
+        const passed = rect.bottom < window.innerHeight * 0.55;
+        canvas.classList.toggle('visible', passed);
+      }
+      window.addEventListener('scroll', syncCanvasVisibility, { passive: true });
+      window.addEventListener('resize', syncCanvasVisibility);
+      mqlPhil.addEventListener('change', syncCanvasVisibility);
+      syncCanvasVisibility();
 
       // --- init ---
       window.addEventListener('resize', resize);
