@@ -439,7 +439,7 @@
         /* Reserve vertical space below the text so that when the canvas is
            pinned at the viewport bottom, the last paragraph can scroll past
            it without the next section starting too soon. */
-        padding-bottom: calc(340px + 2rem);
+        padding-bottom: calc(260px + 2rem);
       }
       .philosophy-text {
         margin: 0 auto;
@@ -462,7 +462,7 @@
         width: 100vw;
         /* Fixed px height so offsetHeight doesn't drift with URL-bar state
            and scroll-driven position math stays stable. */
-        height: 340px;
+        height: 260px;
         z-index: 50;
         pointer-events: none;
         display: block;
@@ -473,13 +473,13 @@
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        /* Off-screen below by default — JS takes over on first scroll.
-           will-change keeps the canvas on its own compositor layer so iOS
-           Safari doesn't demote/re-promote it on every scroll tick; layer
-           thrash is what was flashing the CSS baseline (this translate3d)
-           back into view before the inline transform reasserted. */
-        transform: translate3d(0, 100%, 0);
-        will-change: transform;
+        /* Default state: canvas sits at the viewport bottom but invisible.
+           We hide via opacity (not transform offscreen) so iOS Safari's
+           compositor can never flash an "offscreen" baseline during scroll
+           even if it momentarily reverts to CSS defaults. */
+        transform: translate3d(0, 0, 0);
+        opacity: 0;
+        will-change: transform, opacity;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -4237,8 +4237,251 @@
         }
       }
 
+      // ============================================================
+      // FORGED — hammer + anvil + sparks. The word "forged" is rasterized
+      // as the anvil's top slab; an outline traces the rest of the anvil
+      // below it; a hammer cycles down to strike, launching a burst of
+      // sparks each cycle.
+      // ============================================================
+      const FORGED_WORD_COUNT   = 1800;
+      const FORGED_ANVIL_COUNT  = 500;
+      const FORGED_HAMMER_COUNT = 400;
+      const FORGED_CYCLE_MS = 1500;
+      const FORGED_GRAVITY  = 1400;
+
+      // Anvil outline (fractions of safe region, clockwise). Top slab holds
+      // the word; body narrows to a waist and flares to a wide base.
+      const _forgedAnvilVerts = [
+        [0.10, 0.46], [0.16, 0.42], [0.84, 0.42], [0.90, 0.46],
+        [0.84, 0.52], [0.84, 0.62], [0.66, 0.68], [0.64, 0.80],
+        [0.74, 0.86], [0.76, 0.92], [0.24, 0.92], [0.26, 0.86],
+        [0.36, 0.80], [0.34, 0.68], [0.16, 0.62], [0.16, 0.52],
+      ];
+
+      // 0=word, 1=anvil, 2=hammer, 3=spark
+      const forgedRole = new Int8Array(PARTICLE_COUNT);
+      const forgedAbsX = new Float32Array(PARTICLE_COUNT); // word/anvil=abs; hammer=local
+      const forgedAbsY = new Float32Array(PARTICLE_COUNT);
+
+      let forgedInitialized = false;
+      let forgedBoundsKey = '';
+      let forgedPrevPhase = 1;
+      let forgedCx = 0, forgedStrikeY = 0;
+
+      (function assignForgedRoles() {
+        let idx = 0;
+        for (let i = 0; i < FORGED_WORD_COUNT && idx < PARTICLE_COUNT; i++, idx++)   forgedRole[idx] = 0;
+        for (let i = 0; i < FORGED_ANVIL_COUNT && idx < PARTICLE_COUNT; i++, idx++)  forgedRole[idx] = 1;
+        for (let i = 0; i < FORGED_HAMMER_COUNT && idx < PARTICLE_COUNT; i++, idx++) forgedRole[idx] = 2;
+        for (; idx < PARTICLE_COUNT; idx++) forgedRole[idx] = 3;
+      })();
+
+      function _forgedRasterWord(sr) {
+        const off = document.createElement('canvas');
+        off.width  = Math.max(1, Math.floor(sr.w));
+        off.height = Math.max(1, Math.floor(sr.h));
+        const ctx = off.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        let fs = Math.floor(Math.min(sr.h * 0.20, sr.w * 0.17));
+        ctx.font = `italic 700 ${fs}px 'EB Garamond', Georgia, serif`;
+        while (ctx.measureText('forged').width > off.width * 0.58 && fs > 12) {
+          fs -= 2;
+          ctx.font = `italic 700 ${fs}px 'EB Garamond', Georgia, serif`;
+        }
+        ctx.fillText('forged', off.width * 0.5, off.height * 0.52);
+        const img = ctx.getImageData(0, 0, off.width, off.height).data;
+        const filled = [];
+        for (let y = 0; y < off.height; y += 2) {
+          for (let x = 0; x < off.width; x += 2) {
+            if (img[(y * off.width + x) * 4 + 3] > 128) filled.push(sr.l + x, sr.t + y);
+          }
+        }
+        let seed = (filled.length || 1) * 2654435761;
+        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
+        for (let i = filled.length / 2 - 1; i > 0; i--) {
+          const j = Math.floor(rnd() * (i + 1));
+          const ax = filled[i*2], ay = filled[i*2+1];
+          filled[i*2]   = filled[j*2];   filled[i*2+1] = filled[j*2+1];
+          filled[j*2]   = ax;            filled[j*2+1] = ay;
+        }
+        return filled;
+      }
+
+      function _forgedInit() {
+        const sr = _flowSafeRegion();
+        const key = sr.l + ':' + sr.r + ':' + sr.t + ':' + sr.b;
+        if (forgedInitialized && key === forgedBoundsKey) return;
+        forgedBoundsKey = key;
+
+        const wordPx = _forgedRasterWord(sr);
+        const wordN = wordPx.length / 2;
+        let wc = 0;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          if (forgedRole[i] !== 0) continue;
+          if (wordN === 0) {
+            forgedAbsX[i] = sr.l + sr.w * 0.5;
+            forgedAbsY[i] = sr.t + sr.h * 0.52;
+          } else {
+            const k = wc % wordN;
+            forgedAbsX[i] = wordPx[k*2];
+            forgedAbsY[i] = wordPx[k*2+1];
+            wc++;
+          }
+        }
+
+        // Anvil outline — distribute particles by perimeter arc-length.
+        const avx = [], avy = [];
+        for (const v of _forgedAnvilVerts) {
+          avx.push(sr.l + v[0] * sr.w);
+          avy.push(sr.t + v[1] * sr.h);
+        }
+        const segLens = [];
+        let totalLen = 0;
+        for (let i = 0; i < avx.length; i++) {
+          const j = (i + 1) % avx.length;
+          const L = Math.hypot(avx[j] - avx[i], avy[j] - avy[i]);
+          segLens.push(L); totalLen += L;
+        }
+        let ac = 0;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          if (forgedRole[i] !== 1) continue;
+          const t = (ac / FORGED_ANVIL_COUNT) * totalLen;
+          ac++;
+          let acc = 0, seg = 0;
+          while (seg < segLens.length && acc + segLens[seg] < t) { acc += segLens[seg]; seg++; }
+          if (seg >= segLens.length) seg = segLens.length - 1;
+          const localT = segLens[seg] > 0 ? (t - acc) / segLens[seg] : 0;
+          const j = (seg + 1) % avx.length;
+          forgedAbsX[i] = avx[seg] + (avx[j] - avx[seg]) * localT;
+          forgedAbsY[i] = avy[seg] + (avy[j] - avy[seg]) * localT;
+        }
+
+        // Hammer — local offsets. (0,0) is bottom-center of head.
+        const headHalfW   = sr.w * 0.045;
+        const headH       = sr.h * 0.09;
+        const handleHalfW = sr.w * 0.012;
+        const handleLen   = sr.h * 0.26;
+        const handleBottom = -headH;
+        const handleTop    = -headH - handleLen;
+        const headCount = Math.floor(FORGED_HAMMER_COUNT * 0.6);
+        const handleCount = FORGED_HAMMER_COUNT - headCount;
+        const headSegs = [
+          [[-headHalfW, -headH], [ headHalfW, -headH]],
+          [[ headHalfW, -headH], [ headHalfW, 0]],
+          [[ headHalfW, 0],       [-headHalfW, 0]],
+          [[-headHalfW, 0],       [-headHalfW, -headH]],
+        ];
+        const headSLens = [2 * headHalfW, headH, 2 * headHalfW, headH];
+        const headPerim = headSLens.reduce((s, n) => s + n, 0);
+        const handleSegs = [
+          [[-handleHalfW, handleTop],    [ handleHalfW, handleTop]],
+          [[ handleHalfW, handleTop],    [ handleHalfW, handleBottom]],
+          [[ handleHalfW, handleBottom], [-handleHalfW, handleBottom]],
+          [[-handleHalfW, handleBottom], [-handleHalfW, handleTop]],
+        ];
+        const handleSLens = [2 * handleHalfW, handleLen, 2 * handleHalfW, handleLen];
+        const handlePerim = handleSLens.reduce((s, n) => s + n, 0);
+        let hc = 0;
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          if (forgedRole[i] !== 2) continue;
+          let segs, sLens, perim, count, ofs;
+          if (hc < headCount) {
+            segs = headSegs; sLens = headSLens; perim = headPerim; count = headCount; ofs = hc;
+          } else {
+            segs = handleSegs; sLens = handleSLens; perim = handlePerim; count = handleCount; ofs = hc - headCount;
+          }
+          const t = (ofs / count) * perim;
+          let acc = 0, seg = 0;
+          while (seg < 4 && acc + sLens[seg] < t) { acc += sLens[seg]; seg++; }
+          if (seg >= 4) seg = 3;
+          const localT = sLens[seg] > 0 ? (t - acc) / sLens[seg] : 0;
+          const p0 = segs[seg][0], p1 = segs[seg][1];
+          forgedAbsX[i] = p0[0] + (p1[0] - p0[0]) * localT;
+          forgedAbsY[i] = p0[1] + (p1[1] - p0[1]) * localT;
+          hc++;
+        }
+
+        forgedCx      = sr.l + sr.w * 0.5;
+        forgedStrikeY = sr.t + sr.h * 0.42;
+
+        // Seed sparks at impact — frame-0 wrap will launch them.
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          if (forgedRole[i] !== 3) continue;
+          px[i] = forgedCx;
+          py[i] = forgedStrikeY;
+          vx[i] = 0; vy[i] = 0;
+        }
+        forgedPrevPhase = 1;
+        forgedInitialized = true;
+      }
+
+      function computeForgedTargets(tMs, dt) {
+        _forgedInit();
+        const sr = _flowSafeRegion();
+
+        const phase = (tMs % FORGED_CYCLE_MS) / FORGED_CYCLE_MS;
+        const wrapped = phase < forgedPrevPhase;
+        forgedPrevPhase = phase;
+
+        const yStrike = forgedStrikeY;
+        const yApex   = sr.t + sr.h * 0.05;
+        const yBounce = yStrike - sr.h * 0.10;
+        let hy;
+        if (phase < 0.08) {
+          const t = phase / 0.08;
+          const eo = 1 - (1 - t) * (1 - t);
+          hy = yStrike + (yBounce - yStrike) * eo;
+        } else if (phase < 0.55) {
+          const t = (phase - 0.08) / 0.47;
+          const eio = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+          hy = yBounce + (yApex - yBounce) * eio;
+        } else if (phase < 0.78) {
+          hy = yApex;
+        } else {
+          const t = (phase - 0.78) / 0.22;
+          const ei = t * t * t;
+          hy = yApex + (yStrike - yApex) * ei;
+        }
+
+        if (wrapped) {
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            if (forgedRole[i] !== 3) continue;
+            px[i] = forgedCx + (Math.random() - 0.5) * sr.w * 0.03;
+            py[i] = yStrike;
+            const angle = -Math.PI * (0.1 + Math.random() * 0.8);
+            const speed = 220 + Math.random() * 380;
+            vx[i] = Math.cos(angle) * speed;
+            vy[i] = Math.sin(angle) * speed;
+          }
+        }
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const role = forgedRole[i];
+          if (role === 0 || role === 1) {
+            animTargets[i*2]   = forgedAbsX[i];
+            animTargets[i*2+1] = forgedAbsY[i];
+            flowAlpha[i] = 1;
+          } else if (role === 2) {
+            animTargets[i*2]   = forgedCx + forgedAbsX[i];
+            animTargets[i*2+1] = hy + forgedAbsY[i];
+            flowAlpha[i] = 1;
+          } else {
+            // Spark: gravity accumulates, shared loop integrates position.
+            vy[i] += FORGED_GRAVITY * dt;
+            animTargets[i*2]   = px[i];
+            animTargets[i*2+1] = py[i];
+            const fade = Math.min(1, phase / 0.55);
+            flowAlpha[i] = Math.max(0, 1 - fade);
+          }
+        }
+      }
+
       // --- GL setup ---
       const vs = `
+        attribute vec2 aPos;
+        attribute vec3 aCol;
         attribute vec2 aPos;
         attribute vec3 aCol;
         attribute float aAlpha;
@@ -4484,31 +4727,43 @@
       const OFFSCREEN_MARGIN_PX = 60; // skip work when canvas can't be visible
       let _canvasMode = 'flow';
       let _lastAppliedOffset = NaN;
+      let _lastAppliedOpacity = NaN;
       let _scrollRaf = 0;
       // visualViewport is more stable during Safari chrome animation than
       // window.innerHeight, which transitions smoothly as the URL bar moves.
       const vvp = window.visualViewport || null;
 
+      function applyState(offset, visible) {
+        if (offset !== _lastAppliedOffset) {
+          canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
+          _lastAppliedOffset = offset;
+        }
+        const op = visible ? 1 : 0;
+        if (op !== _lastAppliedOpacity) {
+          canvas.style.opacity = String(op);
+          _lastAppliedOpacity = op;
+        }
+      }
+
       function syncCanvasPos() {
         _scrollRaf = 0;
         if (!mqlPhil.matches || !firstPara || !philSection) {
+          // Desktop / missing elements — defer to CSS defaults.
           if (canvas.style.transform) canvas.style.transform = '';
+          if (canvas.style.opacity)   canvas.style.opacity = '';
           _canvasMode = 'flow';
           _lastAppliedOffset = NaN;
+          _lastAppliedOpacity = NaN;
           return;
         }
         const vh = vvp ? vvp.height : window.innerHeight;
-        const canvasH = canvas.offsetHeight; // now a fixed 340px
+        const canvasH = canvas.offsetHeight;
         const sRect  = philSection.getBoundingClientRect();
 
-        // Short-circuit: section fully off-screen. Park the canvas offscreen
-        // and bail — no reads, no math, no layer churn.
+        // Short-circuit: section fully off-screen. Hide via opacity (no
+        // transform change) so the compositor isn't doing extra work.
         if (sRect.bottom < -OFFSCREEN_MARGIN_PX || sRect.top > vh + OFFSCREEN_MARGIN_PX) {
-          const offOffset = canvasH + 40;
-          if (_lastAppliedOffset !== offOffset) {
-            canvas.style.transform = `translate3d(0, ${offOffset}px, 0)`;
-            _lastAppliedOffset = offOffset;
-          }
+          applyState(_lastAppliedOffset || 0, false);
           return;
         }
 
@@ -4523,13 +4778,11 @@
         if (flowTop > pinTop + HYSTERESIS_PX) {
           nextMode = 'flow';
         } else if (flowTop < pinTop - HYSTERESIS_PX) {
-          // Past the flow-in phase: choose between pinned and anchor.
           if (sectionAnchorTop < pinTop - HYSTERESIS_PX) {
             nextMode = 'anchor';
           } else if (sectionAnchorTop > pinTop + HYSTERESIS_PX) {
             nextMode = 'pinned';
           }
-          // Otherwise stay in whichever of pinned/anchor we were in.
         }
         _canvasMode = nextMode;
 
@@ -4539,10 +4792,10 @@
         else                                targetTop = pinTop;
 
         const offset = Math.round(targetTop - pinTop);
-        if (offset !== _lastAppliedOffset) {
-          canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
-          _lastAppliedOffset = offset;
-        }
+        // Visible whenever the section is on screen AND the canvas's position
+        // would actually place it within the viewport.
+        const visible = (offset < canvasH) && (offset > -canvasH);
+        applyState(offset, visible);
       }
       function scheduleSync() {
         if (_scrollRaf) return;
