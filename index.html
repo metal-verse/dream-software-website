@@ -669,6 +669,15 @@
       line-height: 1.8;
     }
 
+    /* Animated body wrapper (applied via JS on load). Force display so we can
+       animate max-height even when <details> is not open. */
+    .faq-item > .faq-body {
+      display: block;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
     /* ===== TESTIMONIALS ===== */
     #testimonials {
       border-top: 1px solid var(--graphite);
@@ -1484,10 +1493,10 @@
         <summary>What don't you do?</summary>
         <p>
           We're not the right fit for everything, and we'd rather say so up front. We don't do
-          template WordPress sites, crypto or NFT projects, pure staff augmentation, or "make it
-          look like our competitor" work. If a project is really about churning out something
-          generic as cheaply as possible, there are better shops for that — and we'll happily
-          point you toward one.
+          <strong>template WordPress sites</strong>, <strong>crypto or NFT projects</strong>,
+          <strong>pure staff augmentation</strong>, or "make it look like our competitor" work.
+          If a project is really about churning out something generic as cheaply as possible,
+          there are better shops for that — and we'll happily point you toward one.
         </p>
       </details>
       <details class="faq-item">
@@ -1506,8 +1515,9 @@
           We build with AI every day — it's a constant collaborator in our own codebases, not a
           side project. Workshops teach teams how to actually work with these systems the way we
           do: not prompt tricks, but how to think about AI as a collaborator inside a real
-          workflow, where it's useful, where it quietly lies to you, and how to integrate it into
-          products without betting the company on it. Tailored to your team's current level.
+          workflow — <strong>where it's useful</strong>, <strong>where it quietly lies to
+          you</strong>, and <strong>how to integrate it without betting the company on it</strong>.
+          Tailored to your team's current level.
         </p>
       </details>
       <details class="faq-item">
@@ -2416,28 +2426,91 @@
       });
     }
 
-    // Pricing deep-link: open the pricing FAQ when linked from nav
-    document.querySelectorAll('a[data-faq="pricing"]').forEach(link => {
-      link.addEventListener('click', () => {
-        const item = document.getElementById('faq-pricing');
-        if (item) setTimeout(() => { item.open = true; }, 50);
-      });
-    });
-    if (window.location.hash === '#pricing') {
-      const item = document.getElementById('faq-pricing');
-      if (item) { item.open = true; item.scrollIntoView({ behavior: 'smooth' }); }
-    }
-
-    // FAQ accordion — only one item open at a time
-    document.querySelectorAll('#faq .faq-item').forEach(item => {
-      item.addEventListener('toggle', () => {
+    // FAQ animated accordion — wraps non-summary content so height can transition
+    (function setupFaq() {
+      const items = document.querySelectorAll('#faq .faq-item');
+      items.forEach(item => {
+        const body = document.createElement('div');
+        body.className = 'faq-body';
+        Array.from(item.childNodes).forEach(n => {
+          if (!(n.nodeType === 1 && n.tagName === 'SUMMARY')) body.appendChild(n);
+        });
+        item.appendChild(body);
         if (item.open) {
-          document.querySelectorAll('#faq .faq-item').forEach(other => {
-            if (other !== item && other.open) other.open = false;
-          });
+          body.style.maxHeight = 'none';
         }
       });
-    });
+
+      function closeItem(item, cb) {
+        const body = item.querySelector(':scope > .faq-body');
+        if (!item.open || !body) { if (cb) cb(); return; }
+        body.style.maxHeight = body.scrollHeight + 'px';
+        void body.offsetHeight;
+        body.style.maxHeight = '0px';
+        const onEnd = (e) => {
+          if (e.propertyName !== 'max-height') return;
+          body.removeEventListener('transitionend', onEnd);
+          item.open = false;
+          if (cb) cb();
+        };
+        body.addEventListener('transitionend', onEnd);
+      }
+
+      function openItem(item) {
+        const body = item.querySelector(':scope > .faq-body');
+        if (!body) return;
+        item.open = true;
+        body.style.maxHeight = '0px';
+        void body.offsetHeight;
+        body.style.maxHeight = body.scrollHeight + 'px';
+        const onEnd = (e) => {
+          if (e.propertyName !== 'max-height') return;
+          body.removeEventListener('transitionend', onEnd);
+          body.style.maxHeight = 'none';
+        };
+        body.addEventListener('transitionend', onEnd);
+      }
+
+      items.forEach(item => {
+        const summary = item.querySelector(':scope > summary');
+        if (!summary) return;
+        summary.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (item.open) {
+            closeItem(item);
+          } else {
+            const openOthers = document.querySelectorAll('#faq .faq-item[open]');
+            if (openOthers.length) {
+              openOthers.forEach(other => { if (other !== item) closeItem(other); });
+              // Wait briefly so the closing animation is visible before expanding
+              setTimeout(() => openItem(item), 80);
+            } else {
+              openItem(item);
+            }
+          }
+        });
+      });
+
+      // Pricing deep-link — open via our animated path
+      document.querySelectorAll('a[data-faq="pricing"]').forEach(link => {
+        link.addEventListener('click', () => {
+          const item = document.getElementById('faq-pricing');
+          if (!item) return;
+          setTimeout(() => {
+            const openOthers = document.querySelectorAll('#faq .faq-item[open]');
+            openOthers.forEach(other => { if (other !== item) closeItem(other); });
+            if (!item.open) openItem(item);
+          }, 50);
+        });
+      });
+      if (window.location.hash === '#pricing') {
+        const item = document.getElementById('faq-pricing');
+        if (item) {
+          openItem(item);
+          item.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    })();
 
     function showCopyToast(message) {
       const toast = document.getElementById('copy-toast');
