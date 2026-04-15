@@ -336,7 +336,12 @@
     }
 
     @media (max-width: 880px) {
-      section#philosophy { padding: 4rem 0; }
+      section#philosophy {
+        padding: 4rem 0 2rem;
+        /* Leave room for the sticky canvas footer so the last paragraph doesn't
+           disappear behind it */
+        padding-bottom: calc(38vh + 2rem);
+      }
       #philosophy > .section-label,
       #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
       .philosophy-grid {
@@ -346,6 +351,43 @@
       }
       .philosophy-text { margin: 0 auto; justify-self: center; }
       .philosophy-canvas-label { text-align: center; }
+
+      /* Canvas lives as a fixed-position footer panel; only visible while the
+         user is actually inside the philosophy section (toggled by JS) */
+      #philosophy-canvas {
+        position: fixed;
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 36vh;
+        min-height: 240px;
+        max-height: 420px;
+        z-index: 50;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(12px);
+        transition: opacity 0.4s ease, transform 0.4s ease;
+        border-top: 1px solid rgba(212, 134, 58, 0.25);
+        background: linear-gradient(to top, rgba(26,26,26,0.85), rgba(26,26,26,0));
+      }
+      #philosophy-canvas.pinned {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* Make the highlighted words clearly tappable on touch */
+      .phrase-trigger {
+        cursor: pointer;
+        border-bottom-width: 1px;
+        padding: 0 2px;
+      }
+      .phrase-trigger::after {
+        content: '';
+        display: inline-block;
+        width: 0;
+      }
     }
 
     /* ===== SERVICES ===== */
@@ -2828,7 +2870,7 @@
       const BRUSH_CYCLE_MS = 7200;             // full paintbrush animation cycle
       const ANIMATED_SHAPES = { BRUSH: true };
       const DEFAULT_SHAPE = 'FORGED';          // static word shown on load; brush is a hover-only state now
-      const SWATCH_WORD = 'we build exceptional';
+      const SWATCH_LINES = ['we build', 'exceptional'];
       const CONVERGE_THRESHOLD_PX = 6;        // particle counted as "arrived" within this distance
       const BURST_CONV_MIN = 0.90;             // burst only if ≥90% converged
       const BURST_SPEED = 520;                 // px/sec outward velocity on burst
@@ -3005,40 +3047,55 @@
       })();
       const animTargets = new Float32Array(PARTICLE_COUNT * 2);
 
-      // --- rasterize the swatch word into swatch bounds and assign to swatch particles ---
-      let swatchRasterBounds = { l: 0, r: 0, t: 0, b: 0 };
+      // --- rasterize the swatch word (multi-line) into swatch bounds, assign pixels to particles ---
+      let swatchRasterBounds = null; // null on first call → force raster
       function rasterizeSwatchWord(l, t, r, b) {
-        // Only re-raster if bounds changed meaningfully
-        if (Math.abs(l - swatchRasterBounds.l) < 1 && Math.abs(r - swatchRasterBounds.r) < 1 &&
-            Math.abs(t - swatchRasterBounds.t) < 1 && Math.abs(b - swatchRasterBounds.b) < 1) return;
-        swatchRasterBounds = { l, r, t, b };
-        const bw = Math.max(40, r - l), bh = Math.max(20, b - t);
+        if (swatchRasterBounds &&
+            Math.abs(l - swatchRasterBounds.l) < 2 && Math.abs(r - swatchRasterBounds.r) < 2 &&
+            Math.abs(t - swatchRasterBounds.t) < 2 && Math.abs(b - swatchRasterBounds.b) < 2) return;
+        const bw = Math.max(80, Math.round(r - l));
+        const bh = Math.max(48, Math.round(b - t));
         const off = document.createElement('canvas');
         off.width = bw; off.height = bh;
         const ctx = off.getContext('2d');
-        ctx.fillStyle = '#fff';
+        ctx.clearRect(0, 0, bw, bh);
+        ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        let fs = Math.floor(bh * 0.78);
-        ctx.font = `italic 600 ${fs}px 'EB Garamond', Georgia, serif`;
-        while (ctx.measureText(SWATCH_WORD).width > bw * 0.98 && fs > 10) {
-          fs -= 2;
-          ctx.font = `italic 600 ${fs}px 'EB Garamond', Georgia, serif`;
+        ctx.textBaseline = 'alphabetic'; // more consistent metrics than 'middle'
+        const numLines = SWATCH_LINES.length;
+        const lineSlotH = bh / numLines;
+        const mkFont = (s) => `italic 600 ${s}px 'EB Garamond', Georgia, 'Times New Roman', serif`;
+        // Per-line font sizing: each line maximizes its own slot width
+        const lineMeta = [];
+        for (let li = 0; li < numLines; li++) {
+          const line = SWATCH_LINES[li];
+          let fs = Math.max(12, Math.floor(lineSlotH * 0.92));
+          ctx.font = mkFont(fs);
+          while (ctx.measureText(line).width > bw * 0.95 && fs > 12) {
+            fs -= 2;
+            ctx.font = mkFont(fs);
+          }
+          const w = ctx.measureText(line).width;
+          lineMeta.push({ line, fs, w });
         }
-        const wordW = ctx.measureText(SWATCH_WORD).width;
-        const startX = (bw - wordW) / 2;
-        ctx.fillText(SWATCH_WORD, startX, bh / 2);
+        for (let li = 0; li < numLines; li++) {
+          const { line, fs, w } = lineMeta[li];
+          ctx.font = mkFont(fs);
+          const sx = Math.max(0, (bw - w) / 2);
+          const sy = lineSlotH * li + lineSlotH * 0.82; // baseline ~82% down each slot
+          ctx.fillText(line, sx, sy);
+        }
+        // Stride 1 — don't miss thin italic strokes. Lower alpha threshold too.
         const img = ctx.getImageData(0, 0, bw, bh).data;
         const filled = [];
-        const step = 2;
-        for (let y = 0; y < bh; y += step) {
-          for (let x = 0; x < bw; x += step) {
-            if (img[(y * bw + x) * 4 + 3] > 128) filled.push([l + x, t + y]);
+        for (let y = 0; y < bh; y++) {
+          const rowBase = y * bw;
+          for (let x = 0; x < bw; x++) {
+            if (img[(rowBase + x) * 4 + 3] > 96) filled.push([l + x, t + y]);
           }
         }
-        // Shuffle (seeded) so particle-to-pixel mapping has no periodic artifacts
-        let seed = (SWATCH_WORD.length * 2654435761) ^ filled.length ^ (bw * 7919);
-        function rnd() { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); }
+        let seed = ((SWATCH_LINES.join('').length) * 2654435761) ^ (filled.length || 1) ^ (bw * 7919);
+        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
         for (let i = filled.length - 1; i > 0; i--) {
           const j = Math.floor(rnd() * (i + 1));
           const tmp = filled[i]; filled[i] = filled[j]; filled[j] = tmp;
@@ -3050,15 +3107,13 @@
             swatchTargetsRaster[k*2+1] = cy;
           }
         } else {
-          // Also sort by x so paintProgress check (left-to-right reveal) works naturally
-          // — but we want some randomness within a column, so: bucket by x-band, then shuffle within bands
-          // Simpler: just assign directly; paintProgress compares absolute x per particle.
           for (let k = 0; k < SWATCH_COUNT; k++) {
             const p = filled[k % filled.length];
             swatchTargetsRaster[k*2] = p[0];
             swatchTargetsRaster[k*2+1] = p[1];
           }
         }
+        swatchRasterBounds = { l, r, t, b };
       }
 
       function computeBrushTargets(tCycleMs) {
@@ -3146,7 +3201,8 @@
         // --- swatch word bounds (rasterize region) ---
         // The word sits centered on the sweep path, vertically just below the brush tip
         // We want the tip to move just above the word row so the brush visibly paints it
-        const swatchH = Math.min((safeBottomY - tipY) * 0.65, safeW * 0.10);
+        // Room for two lines — taller than the single-line version
+        const swatchH = Math.max(64, Math.min((safeBottomY - tipY) * 0.85, safeW * 0.18));
         const swatchL = sweepLeft;
         const swatchR = sweepRight;
         const swatchT = tipY + handleHalfW * 1.5;
@@ -3386,15 +3442,37 @@
         requestAnimationFrame(frame);
       }
 
-      // --- hover wiring ---
+      // --- hover + tap wiring ---
+      function activatePhrase(el) {
+        document.querySelectorAll('.phrase-trigger.active').forEach(a => a.classList.remove('active'));
+        el.classList.add('active');
+        const shape = el.getAttribute('data-shape');
+        if (shape) setShape(shape);
+      }
       document.querySelectorAll('.phrase-trigger').forEach(el => {
-        el.addEventListener('mouseenter', () => {
-          document.querySelectorAll('.phrase-trigger.active').forEach(a => a.classList.remove('active'));
-          el.classList.add('active');
-          const shape = el.getAttribute('data-shape');
-          if (shape) setShape(shape);
+        el.addEventListener('mouseenter', () => activatePhrase(el));
+        // Tap to change the simulated word on touch devices (and as an alternate on desktop)
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          activatePhrase(el);
         });
       });
+
+      // --- pin canvas to viewport bottom while #philosophy is in view (mobile only) ---
+      const philSection = document.getElementById('philosophy');
+      if (philSection && 'IntersectionObserver' in window) {
+        const mql = window.matchMedia('(max-width: 880px)');
+        const io = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (!mql.matches) { canvas.classList.remove('pinned'); return; }
+            canvas.classList.toggle('pinned', entry.isIntersecting);
+          });
+        }, { threshold: 0, rootMargin: '0px 0px -20% 0px' });
+        io.observe(philSection);
+        mql.addEventListener('change', () => {
+          if (!mql.matches) canvas.classList.remove('pinned');
+        });
+      }
 
       // --- init ---
       window.addEventListener('resize', resize);
