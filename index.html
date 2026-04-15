@@ -3184,15 +3184,22 @@
         const cycle = (tCycleMs / BRUSH_CYCLE_MS) % 1;
 
         // --- safe region ---
+        // On desktop the canvas is a full-bleed background of the section, so
+        // we need to avoid drawing over the grid/title content that sits on
+        // top of it. On mobile (isStacked) the canvas is its own standalone
+        // section-level element — no overlap, so just use the canvas bounds.
         const canvasRect = canvas.getBoundingClientRect();
-        const gridEl = document.querySelector('.philosophy-grid');
-        const titleEl = document.querySelector('#philosophy .section-title');
         let safeTopY = 20;
-        if (gridEl) {
-          safeTopY = Math.max(safeTopY, gridEl.getBoundingClientRect().top - canvasRect.top + 8);
-        } else if (titleEl) {
-          const tr = titleEl.getBoundingClientRect();
-          safeTopY = Math.max(safeTopY, tr.bottom - canvasRect.top + 16);
+        if (!isStacked) {
+          const gridEl = document.querySelector('.philosophy-grid');
+          const titleEl = document.querySelector('#philosophy .section-title');
+          if (gridEl) {
+            const gridTop = gridEl.getBoundingClientRect().top - canvasRect.top + 8;
+            if (gridTop > 0 && gridTop < H) safeTopY = Math.max(safeTopY, gridTop);
+          } else if (titleEl) {
+            const tr = titleEl.getBoundingClientRect();
+            safeTopY = Math.max(safeTopY, tr.bottom - canvasRect.top + 16);
+          }
         }
         const safeBottomY = H - 30;
         const safeLeftX = shapeLeftPx;
