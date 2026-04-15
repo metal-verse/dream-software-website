@@ -341,33 +341,32 @@
         /* Allow sticky children to escape past the section box. */
         overflow: visible;
       }
-      /* .philosophy-text needs a positioned containing block so its child
-         canvas's sticky positioning resolves cleanly against it and the
-         scrolling viewport. */
-      .philosophy-text { position: relative; }
       #philosophy > .section-label,
       #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
-      .philosophy-grid {
-        grid-template-columns: 1fr;
-        gap: 2.5rem;
-        padding: 0 1.5rem;
-      }
-      .philosophy-text {
-        margin: 0 auto;
-        justify-self: center;
-        /* Margin below the text before the canvas footer begins its own space */
-        margin-bottom: 2rem;
+      /* Flatten the grid and text wrappers so their children become the
+         section's direct layout children. That makes the canvas's sticky
+         containing block the section itself, so the sticky range extends
+         all the way to the section's end instead of stopping where
+         .philosophy-text ends. */
+      .philosophy-grid { display: contents; }
+      .philosophy-grid > div:first-child { display: none; }
+      .philosophy-text { display: contents; }
+      /* Paragraphs and the label handle their own horizontal padding now
+         that their wrapper has no box. */
+      .philosophy-text > p,
+      .philosophy-canvas-label {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+        max-width: 640px;
+        margin-left: auto;
+        margin-right: auto;
       }
       .philosophy-canvas-label { text-align: center; }
 
-      /* Canvas occupies its own flow space at the bottom of the section, and
-         sticks to the viewport bottom while the section is scrolling past.
-         When the section's end catches up, the canvas un-sticks and scrolls
-         out with the section. */
-      /* JS relocates the canvas into .philosophy-text right after the first
-         paragraph on mobile. It flows in naturally, reveals as the user
-         scrolls, and sticky-pins to the viewport bottom once fully in view
-         so p2/p3 scroll up above it. Unsticks at section end. */
+      /* JS relocates the canvas into .philosophy-text after the first
+         paragraph on mobile. Because the grid and text wrappers are
+         display: contents, the canvas's effective flow parent is the
+         section — so sticky range runs all the way to section end. */
       #philosophy-canvas {
         position: sticky;
         top: auto;
@@ -2882,15 +2881,15 @@
       if (!gl) return; // graceful: no canvas, plain text still readable
 
       const PARTICLE_COUNT = 4000;
-      const BRUSH_CYCLE_MS = 10500;            // full paintbrush animation cycle
+      const BRUSH_CYCLE_MS = 12500;            // full paintbrush animation cycle
       const ANIMATED_SHAPES = { BRUSH: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_LINES = ['we build', 'exceptional'];
       // Phase boundaries (fractions of cycle)
-      const PH_PAINT_END    = 0.36;
-      const PH_MOVE_TO_REST = 0.44;
-      const PH_REST_END     = 0.68;   // words visible ~2.5s
-      const PH_PICKUP_END   = 0.93;
+      const PH_PAINT_END    = 0.40;   // paint ~5.0s
+      const PH_MOVE_TO_REST = 0.46;
+      const PH_REST_END     = 0.66;   // rest ~2.5s
+      const PH_PICKUP_END   = 0.94;   // pickup ~3.5s
       const PAINT_STROKES   = 2;
       const PICKUP_STROKES  = 2;
       const CONVERGE_THRESHOLD_PX = 6;        // particle counted as "arrived" within this distance
@@ -3197,94 +3196,121 @@
         const swatchB = safeTopY + safeH * 0.88;
         rasterizeSwatchWord(swatchL, swatchT, swatchR, swatchB);
 
-        // Diagonal endpoints for paint/pickup strokes (in "tip-space", padded so handle stays safe)
-        const strokeBL_x = swatchL + safeW * 0.04;  // bottom-left of swatch, slightly inset
-        const strokeBL_y = swatchB - safeH * 0.02;
-        const strokeTR_x = swatchR - safeW * 0.02;
-        const strokeTR_y = swatchT + safeH * 0.02;
+        // Horizontal sweep range along each line of text
+        const strokeL_x = swatchL + safeW * 0.03;
+        const strokeR_x = swatchR - safeW * 0.02;
+        const strokeW   = strokeR_x - strokeL_x;
+        // Vertical center of each rasterized line
+        const topLineY    = swatchT + (swatchB - swatchT) * 0.26;
+        const bottomLineY = swatchT + (swatchB - swatchT) * 0.74;
+        // Bristle tip wiggles up-down while the brush moves horizontally across each line
+        const wiggleAmp    = (swatchB - swatchT) * 0.11;
+        const wiggleCycles = 4.5;  // number of up-down oscillations per line
 
         // Rest position — tip parked just right of the words, close to vertical
-        const restTipX = safeRightX - Math.max(40, safeW * 0.04);
-        const restTipY = safeTopY + safeH * 0.55;
-        const restAngle = -Math.PI / 2.35;  // ~-77° (close to vertical, leaning slightly right)
+        const restTipX  = safeRightX - Math.max(40, safeW * 0.04);
+        const restTipY  = safeTopY + safeH * 0.55;
+        const restAngle = -Math.PI / 2.35;  // ~-77°
 
-        // --- phase logic: compute tipX/tipY/angle, paintProgress, pickupProgress ---
-        const baseAngle = -Math.PI / 3;     // -60° for paint/pickup strokes
-        const wobble = Math.sin(tCycleMs * 0.0017) * 0.085; // ±~5°
+        const baseAngle = -Math.PI / 3;     // -60° while sweeping lines
+        const wobble    = Math.sin(tCycleMs * 0.0017) * 0.085;
 
         let tipX, tipY, angle;
-        let paintProgress;   // 0→1 monotone through paint phase; 1 after
-        let pickupProgress;  // 0 until pickup starts; 1 at end of pickup
+        let paintProgress;
+        let pickupProgress;
 
-        // Helper: triangle wave over [0,1] with N full strokes (0→1→0→1→...)
-        // For PAINT: we want to end at TR (closer to rest). With 2 strokes: BL→TR→BL→TR.
-        // With `strokes` as number of half-traversals: strokes=4 ⇒ BL→TR→BL→TR→ (ends at... TR? with 4 half-strokes starts at 0, ends at 4*1 mod 2? Let's think)
-        // Using triangle: trip(u) oscillates 0→1→0 with period 1.
-        // We want 2 full round-trips = 4 half-strokes for paint: use numHalf = 4, position = (strokes even? fracOfStroke : 1-fracOfStroke)
-        function diagPos(phaseT, numHalfStrokes) {
-          const s = phaseT * numHalfStrokes;
-          const k = Math.floor(s);
-          const f = s - k;
-          return (k % 2 === 0) ? f : (1 - f);
-        }
+        // Smoothing windows for paint/pickup transitions (declared here so phase logic can use them)
+        const PAINT_WINDOW = 0.06;
+        const PICKUP_WINDOW = 0.06;
+
+        // Sub-phase splits within paint/pickup: line-A sweep / transition / line-B sweep
+        // Transition is 20% of the phase — slow enough that particles can keep up with the brush
+        const SUB_END_A = 0.40;
+        const SUB_END_T = 0.60;
 
         if (cycle < PH_PAINT_END) {
-          // PAINT — zigzag BL↔TR, paint pixels in diagonal order
+          // PAINT — top line L→R (with wiggle), transition, bottom line L→R (with wiggle)
           const phaseT = cycle / PH_PAINT_END;
-          // 2 full round-trips = 4 half-strokes, ending at TR-ish
-          const p = diagPos(phaseT, PAINT_STROKES * 2);
-          tipX = strokeBL_x + p * (strokeTR_x - strokeBL_x);
-          tipY = strokeBL_y + p * (strokeTR_y - strokeBL_y);
-          // Angle: baseAngle + lean into direction of motion
-          // motion direction sign: ds/dt along triangle wave
-          const dSign = (Math.floor(phaseT * PAINT_STROKES * 2) % 2 === 0) ? 1 : -1;
-          const dirLean = dSign * 0.04;
-          angle = baseAngle + wobble + dirLean;
-          paintProgress = phaseT;
+          if (phaseT < SUB_END_A) {
+            const t = phaseT / SUB_END_A;
+            tipX = strokeL_x + t * strokeW;
+            tipY = topLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
+            angle = baseAngle + wobble + 0.03;
+            paintProgress = t * 0.5;
+          } else if (phaseT < SUB_END_T) {
+            const t = (phaseT - SUB_END_A) / (SUB_END_T - SUB_END_A);
+            const eased = t * t * (3 - 2 * t);
+            const sx = strokeL_x + strokeW, sy = topLineY;
+            const ex = strokeL_x, ey = bottomLineY;
+            tipX = sx + eased * (ex - sx);
+            tipY = sy + eased * (ey - sy);
+            angle = baseAngle + wobble;
+            paintProgress = 0.5;
+          } else {
+            const t = (phaseT - SUB_END_T) / (1 - SUB_END_T);
+            tipX = strokeL_x + t * strokeW;
+            tipY = bottomLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
+            angle = baseAngle + wobble + 0.03;
+            paintProgress = 0.5 + t * 0.5;
+          }
           pickupProgress = 0;
         } else if (cycle < PH_MOVE_TO_REST) {
-          // TRANSITION — lerp from end-of-paint (near TR) to rest position
+          // Transition from end-of-paint (bottom-right) to rest.
+          // Overshoot paintProgress to 1 + PAINT_WINDOW so stragglers (last-painted pixels
+          // like "exceptional"'s L) fully settle onto their word positions.
           const phaseT = (cycle - PH_PAINT_END) / (PH_MOVE_TO_REST - PH_PAINT_END);
-          const eased = phaseT * phaseT * (3 - 2 * phaseT); // smoothstep
-          const startX = strokeTR_x, startY = strokeTR_y;
+          const eased = phaseT * phaseT * (3 - 2 * phaseT);
+          const startX = strokeL_x + strokeW, startY = bottomLineY;
           tipX = startX + eased * (restTipX - startX);
           tipY = startY + eased * (restTipY - startY);
           angle = (baseAngle + wobble) * (1 - eased) + restAngle * eased;
-          paintProgress = 1;
+          paintProgress = 1 + phaseT * PAINT_WINDOW;
           pickupProgress = 0;
         } else if (cycle < PH_REST_END) {
-          // REST — brush parked right of words, words fully visible
+          // REST — words visible
           tipX = restTipX;
           tipY = restTipY;
           angle = restAngle + wobble * 0.6;
-          paintProgress = 1;
+          paintProgress = 1 + PAINT_WINDOW;
           pickupProgress = 0;
         } else if (cycle < PH_PICKUP_END) {
-          // PICKUP — zigzag diagonally across the words, pixels dissolve in order
+          // PICKUP — bottom line R→L (with wiggle), transition, top line R→L (with wiggle)
+          // Bottom first since rest is near the bottom/middle right of the words
           const phaseT = (cycle - PH_REST_END) / (PH_PICKUP_END - PH_REST_END);
-          // Start at TR (near rest), zigzag. numHalfStrokes = PICKUP_STROKES * 2.
-          // For pickup we want to start at TR (p=1) and end at BL (p=0):
-          // Using (1 - diagPos) flips it.
-          const p = 1 - diagPos(phaseT, PICKUP_STROKES * 2);
-          tipX = strokeBL_x + p * (strokeTR_x - strokeBL_x);
-          tipY = strokeBL_y + p * (strokeTR_y - strokeBL_y);
-          const dSign = (Math.floor(phaseT * PICKUP_STROKES * 2) % 2 === 0) ? -1 : 1;
-          angle = baseAngle + wobble + dSign * 0.04;
-          paintProgress = 1;
-          pickupProgress = phaseT;
+          // Scale pickup progress by (1 + PICKUP_WINDOW) so last-picked-up particles
+          // (e.g. leftmost pixels on the top line) fully resolve into the bristles.
+          const UP_SCALE = 1 + PICKUP_WINDOW;
+          if (phaseT < SUB_END_A) {
+            const t = phaseT / SUB_END_A;
+            tipX = strokeL_x + strokeW - t * strokeW;
+            tipY = bottomLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
+            angle = baseAngle + wobble - 0.03;
+            pickupProgress = t * 0.5 * UP_SCALE;
+          } else if (phaseT < SUB_END_T) {
+            const t = (phaseT - SUB_END_A) / (SUB_END_T - SUB_END_A);
+            const eased = t * t * (3 - 2 * t);
+            const sx = strokeL_x, sy = bottomLineY;
+            const ex = strokeL_x + strokeW, ey = topLineY;
+            tipX = sx + eased * (ex - sx);
+            tipY = sy + eased * (ey - sy);
+            angle = baseAngle + wobble;
+            pickupProgress = 0.5 * UP_SCALE;
+          } else {
+            const t = (phaseT - SUB_END_T) / (1 - SUB_END_T);
+            tipX = strokeL_x + strokeW - t * strokeW;
+            tipY = topLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
+            angle = baseAngle + wobble - 0.03;
+            pickupProgress = (0.5 + t * 0.5) * UP_SCALE;
+          }
+          paintProgress = 1 + PAINT_WINDOW;
         } else {
-          // RETURN — from end-of-pickup (BL-ish) back to stroke start for next cycle
-          const phaseT = (cycle - PH_PICKUP_END) / (1 - PH_PICKUP_END);
-          const eased = phaseT * phaseT * (3 - 2 * phaseT);
-          // End-of-pickup position:
-          const endP = 1 - diagPos(1, PICKUP_STROKES * 2); // where pickup left off
-          const endX = strokeBL_x + endP * (strokeTR_x - strokeBL_x);
-          const endY = strokeBL_y + endP * (strokeTR_y - strokeBL_y);
-          tipX = endX + eased * (strokeBL_x - endX);
-          tipY = endY + eased * (strokeBL_y - endY);
+          // RETURN — pickup ends at top-left, which is exactly where paint starts next cycle.
+          // Hold position here so the next cycle begins cleanly without a hop.
+          tipX = strokeL_x;
+          tipY = topLineY;
           angle = baseAngle + wobble;
-          paintProgress = 1;
-          pickupProgress = 1;
+          paintProgress = 1 + PAINT_WINDOW;
+          pickupProgress = 1 + PICKUP_WINDOW;
         }
 
         // Clamp tipX/tipY to safe region (accounting for handle extent at current angle)
@@ -3304,9 +3330,6 @@
         const handleEndX = ferruleEndX + dirX * handleLen;
         const handleEndY = ferruleEndY + dirY * handleLen;
 
-        // Smoothing windows for paint/pickup transitions (smaller = snappier reveal)
-        const PAINT_WINDOW = 0.06;
-        const PICKUP_WINDOW = 0.06;
 
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           const role = brushRole[i];
