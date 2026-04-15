@@ -337,10 +337,9 @@
 
     @media (max-width: 880px) {
       section#philosophy {
-        padding: 4rem 0 2rem;
-        /* Leave room for the sticky canvas footer so the last paragraph doesn't
-           disappear behind it */
-        padding-bottom: calc(38vh + 2rem);
+        padding: 4rem 0 0;
+        /* Allow sticky children to escape past the section box. */
+        overflow: visible;
       }
       #philosophy > .section-label,
       #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
@@ -349,44 +348,41 @@
         gap: 2.5rem;
         padding: 0 1.5rem;
       }
-      .philosophy-text { margin: 0 auto; justify-self: center; }
+      .philosophy-text {
+        margin: 0 auto;
+        justify-self: center;
+        /* Margin below the text before the canvas footer begins its own space */
+        margin-bottom: 2rem;
+      }
       .philosophy-canvas-label { text-align: center; }
 
-      /* Canvas lives as a fixed-position footer panel; only visible while the
-         user is actually inside the philosophy section (toggled by JS) */
+      /* Canvas occupies its own flow space at the bottom of the section, and
+         sticks to the viewport bottom while the section is scrolling past.
+         When the section's end catches up, the canvas un-sticks and scrolls
+         out with the section. */
       #philosophy-canvas {
-        position: fixed;
+        position: sticky;
         top: auto;
+        inset: auto;
         left: 0;
         right: 0;
         bottom: 0;
-        width: 100vw;
+        display: block;
+        width: 100%;
         height: 36vh;
         min-height: 240px;
         max-height: 420px;
-        z-index: 50;
-        opacity: 0;
+        z-index: 2;
         pointer-events: none;
-        transform: translateY(12px);
-        transition: opacity 0.4s ease, transform 0.4s ease;
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        background: linear-gradient(to top, rgba(26,26,26,0.85), rgba(26,26,26,0));
-      }
-      #philosophy-canvas.pinned {
-        opacity: 1;
-        transform: translateY(0);
+        background: linear-gradient(to top, rgba(26,26,26,0.9), rgba(26,26,26,0.6));
       }
 
-      /* Make the highlighted words clearly tappable on touch */
+      /* Make highlighted words clearly tappable on touch */
       .phrase-trigger {
         cursor: pointer;
         border-bottom-width: 1px;
         padding: 0 2px;
-      }
-      .phrase-trigger::after {
-        content: '';
-        display: inline-block;
-        width: 0;
       }
     }
 
@@ -1456,7 +1452,9 @@
 
   <!-- PHILOSOPHY -->
   <section id="philosophy">
-    <canvas id="philosophy-canvas"></canvas>
+    <!-- Canvas position differs per breakpoint: absolute full-bleed on desktop,
+         sticky-in-flow at the bottom on mobile. DOM order = last child so the
+         mobile sticky sits below the text in natural order. -->
     <div class="section-label" style="text-align:center;">// Why We Build</div>
     <div class="section-title" style="text-align:center;">More Than Just Code</div>
     <div class="philosophy-grid">
@@ -1482,6 +1480,7 @@
         </div>
       </div>
     </div>
+    <canvas id="philosophy-canvas"></canvas>
   </section>
 
   <!-- PORTFOLIO -->
@@ -3457,22 +3456,6 @@
           activatePhrase(el);
         });
       });
-
-      // --- pin canvas to viewport bottom while #philosophy is in view (mobile only) ---
-      const philSection = document.getElementById('philosophy');
-      if (philSection && 'IntersectionObserver' in window) {
-        const mql = window.matchMedia('(max-width: 880px)');
-        const io = new IntersectionObserver((entries) => {
-          entries.forEach(entry => {
-            if (!mql.matches) { canvas.classList.remove('pinned'); return; }
-            canvas.classList.toggle('pinned', entry.isIntersecting);
-          });
-        }, { threshold: 0, rootMargin: '0px 0px -20% 0px' });
-        io.observe(philSection);
-        mql.addEventListener('change', () => {
-          if (!mql.matches) canvas.classList.remove('pinned');
-        });
-      }
 
       // --- init ---
       window.addEventListener('resize', resize);
