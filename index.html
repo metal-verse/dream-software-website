@@ -473,10 +473,13 @@
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        /* Off-screen below by default — JS takes over on the first scroll event.
-           will-change is intentionally omitted: on iOS Safari, always-on layer
-           promotion can cause occasional 1-frame repaint glitches. */
+        /* Off-screen below by default — JS takes over on first scroll.
+           will-change keeps the canvas on its own compositor layer so iOS
+           Safari doesn't demote/re-promote it on every scroll tick; layer
+           thrash is what was flashing the CSS baseline (this translate3d)
+           back into view before the inline transform reasserted. */
         transform: translate3d(0, 100%, 0);
+        will-change: transform;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -3037,7 +3040,7 @@
 
       const PARTICLE_COUNT = 4000;
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true };
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
@@ -4298,6 +4301,7 @@
       let currentShape = DEFAULT_SHAPE;
       let isAnimated = true;
       let convergence = 0;
+      let brushStartMs = 0; // timestamp when BRUSH was last activated (cycle-zero reference)
       function rebuildShape(word) {
         currentShape = word;
         isAnimated = !!ANIMATED_SHAPES[word];
@@ -4306,11 +4310,19 @@
         } else {
           targets = sampleShape(word);
         }
+        // Whenever BRUSH becomes active, restart its cycle from zero (IDLE phase) so
+        // any transition into BRUSH begins with the brush-only hold, rather than a
+        // random mid-cycle frame determined by wall-clock time.
+        if (word === 'BRUSH') {
+          brushStartMs = performance.now();
+          prevBrushCycle = 0;
+        }
         // Reset alpha — FLOW/ALIVE modulate per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         if (word === 'ALIVE') aliveInitialized = false;
+        if (word === 'FORGED') forgedInitialized = false;
         const label = document.getElementById('phil-shape-name');
-        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking' };
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging' };
         if (label) label.textContent = labelMap[word] || word;
       }
 
@@ -4369,11 +4381,13 @@
 
         // Animated shapes update their targets each frame
         if (isAnimated && currentShape === 'BRUSH') {
-          computeBrushTargets(t);
+          computeBrushTargets(t - brushStartMs);
         } else if (isAnimated && currentShape === 'FLOW') {
           computeFlowTargets(t);
         } else if (isAnimated && currentShape === 'ALIVE') {
           computeAliveTargets(t, dt);
+        } else if (isAnimated && currentShape === 'FORGED') {
+          computeForgedTargets(t, dt);
         }
 
         let arrived = 0;
