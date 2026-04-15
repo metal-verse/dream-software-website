@@ -1599,7 +1599,7 @@
         <p>
           We believe code is a <strong class="phrase-trigger" data-shape="ALIVE">creative medium</strong> — as expressive as paint, as
           precise as engineering, as alive as a physics simulation. The best software doesn't
-          just function. It <em class="phrase-trigger" data-shape="RESONANCE">moves people</em>.
+          just function. It <em class="phrase-trigger" data-shape="ARTWORKS">moves people</em>.
         </p>
         <p>
           That's what Dream Software builds. <strong class="phrase-trigger" data-shape="FLOW">Software worth looking at. Software worth
@@ -3036,7 +3036,7 @@
 
       const PARTICLE_COUNT = 4000;
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true, RESONANCE: true };
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true, ARTWORKS: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
@@ -3731,104 +3731,271 @@
         };
       }
 
-      // ===== RESONANCE — coupled-string standing waves =====
-      // Model: N horizontal strings stacked vertically, each with its own standing-wave
-      // mode, frequency, amplitude, and phase. "Strikes" pump energy into a random string
-      // with a random mode/frequency; coupling (a shared "skateboard") then diffuses
-      // amplitude and drags mode/frequency of each string toward the amplitude-weighted
-      // mean of the group — so energy spreads and the ensemble synchronizes between strikes.
-      const RES_N_STRINGS = 4;
-      const RES_STRIKE_INTERVAL_MS = 7500;
-      const resAmp   = new Float32Array(RES_N_STRINGS);
-      const resMode  = new Float32Array(RES_N_STRINGS);
-      const resFreq  = new Float32Array(RES_N_STRINGS);
-      const resPhase = new Float32Array(RES_N_STRINGS);
-      const resString = new Int8Array(PARTICLE_COUNT);
-      const resXFrac  = new Float32Array(PARTICLE_COUNT);
-      (function _initResonance() {
-        for (let i = 0; i < RES_N_STRINGS; i++) {
-          resAmp[i] = 0; resMode[i] = 1; resFreq[i] = 2;
-          resPhase[i] = Math.random() * Math.PI * 2;
-        }
-        const perString = PARTICLE_COUNT / RES_N_STRINGS;
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          resString[i] = Math.min(RES_N_STRINGS - 1, Math.floor(i / perString));
-          resXFrac[i] = Math.random();
-        }
-      })();
-      let resonanceStartMs = 0;
-      let lastResonanceStrikeMs = -Infinity;
-      let prevResonanceMs = 0;
+      // ===== ARTWORKS — iconic artwork silhouette coalescence =====
+      // Particles coalesce into one of several iconic artwork silhouettes for a few seconds,
+      // then dissolve and reform as the next. Random starting artwork; then cycles in order.
+      const ARTWORK_HOLD_MS = 4500;
 
-      function _resonanceReset() {
-        for (let i = 0; i < RES_N_STRINGS; i++) {
-          resAmp[i] = 0; resMode[i] = 1; resFreq[i] = 2;
-          resPhase[i] = Math.random() * Math.PI * 2;
+      function _artDrawSpiral(ctx, cx, cy, maxR, turns) {
+        ctx.beginPath();
+        const steps = Math.max(40, Math.floor(turns * 40));
+        const maxT = turns * Math.PI * 2;
+        for (let i = 0; i <= steps; i++) {
+          const t = (i / steps) * maxT;
+          const r = (i / steps) * maxR;
+          const x = cx + Math.cos(t) * r;
+          const y = cy + Math.sin(t) * r;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
-        lastResonanceStrikeMs = -Infinity;
-        prevResonanceMs = 0;
+        ctx.stroke();
       }
 
-      function computeResonanceTargets(tCycleMs) {
-        // First strike fires shortly after activation; subsequent strikes at fixed interval
-        const strikeDue =
-          (lastResonanceStrikeMs === -Infinity && tCycleMs > 700) ||
-          (tCycleMs - lastResonanceStrikeMs >= RES_STRIKE_INTERVAL_MS);
-        if (strikeDue) {
-          // Prefer the lowest-amplitude string so each strike re-energizes a quieter one
-          let idx = 0, minA = Infinity;
-          for (let i = 0; i < RES_N_STRINGS; i++) {
-            if (resAmp[i] < minA) { minA = resAmp[i]; idx = i; }
+      const ARTWORKS = [
+        {
+          // Hokusai's Great Wave — crest + foam fingers + small Mt Fuji
+          name: 'wave',
+          draw(ctx, w, h) {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(0, h * 0.85);
+            ctx.bezierCurveTo(w * 0.12, h * 0.80, w * 0.28, h * 0.55, w * 0.42, h * 0.38);
+            ctx.bezierCurveTo(w * 0.52, h * 0.28, w * 0.62, h * 0.20, w * 0.72, h * 0.26);
+            ctx.bezierCurveTo(w * 0.76, h * 0.32, w * 0.72, h * 0.42, w * 0.64, h * 0.44);
+            ctx.bezierCurveTo(w * 0.60, h * 0.44, w * 0.58, h * 0.41, w * 0.60, h * 0.38);
+            ctx.lineTo(w * 0.60, h * 0.85);
+            ctx.lineTo(0, h * 0.85);
+            ctx.closePath();
+            ctx.fill();
+            const foamX = [0.50, 0.56, 0.63, 0.70];
+            for (let i = 0; i < foamX.length; i++) {
+              ctx.beginPath();
+              ctx.arc(w * foamX[i], h * 0.20, w * 0.022, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(w * foamX[i] - w * 0.015, h * 0.16, w * 0.013, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.beginPath();
+            ctx.moveTo(w * 0.82, h * 0.48);
+            ctx.lineTo(w * 0.94, h * 0.68);
+            ctx.lineTo(w * 0.70, h * 0.68);
+            ctx.closePath();
+            ctx.fill();
           }
-          resAmp[idx]   = 1.0;
-          resMode[idx]  = 1 + Math.floor(Math.random() * 4);   // 1..4 half-waves
-          resFreq[idx]  = 1.7 + Math.random() * 2.0;           // 1.7..3.7 rad/s
-          resPhase[idx] = 0;
-          lastResonanceStrikeMs = tCycleMs;
-        }
+        },
+        {
+          // Van Gogh's Starry Night — sky swirls + cypress silhouette
+          name: 'starry-night',
+          draw(ctx, w, h) {
+            ctx.strokeStyle = '#fff';
+            ctx.fillStyle = '#fff';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = Math.max(3, Math.min(w, h) * 0.013);
+            _artDrawSpiral(ctx, w * 0.55, h * 0.38, Math.min(w, h) * 0.22, 3.2);
+            _artDrawSpiral(ctx, w * 0.22, h * 0.32, Math.min(w, h) * 0.10, 2.5);
+            _artDrawSpiral(ctx, w * 0.82, h * 0.55, Math.min(w, h) * 0.11, 2.8);
+            ctx.beginPath();
+            ctx.moveTo(w * 0.06, h);
+            ctx.bezierCurveTo(w * 0.03, h * 0.6, w * 0.04, h * 0.3, w * 0.09, h * 0.04);
+            ctx.bezierCurveTo(w * 0.14, h * 0.3, w * 0.15, h * 0.6, w * 0.12, h);
+            ctx.closePath();
+            ctx.fill();
+          }
+        },
+        {
+          // Munch's The Scream — figure silhouette with hollow mouth & eyes
+          name: 'scream',
+          draw(ctx, w, h) {
+            ctx.fillStyle = '#fff';
+            const cx = w * 0.5;
+            ctx.beginPath();
+            ctx.ellipse(cx, h * 0.27, w * 0.11, h * 0.16, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx - w * 0.09, h * 0.41);
+            ctx.bezierCurveTo(cx - w * 0.14, h * 0.55, cx - w * 0.22, h * 0.80, cx - w * 0.24, h);
+            ctx.lineTo(cx + w * 0.24, h);
+            ctx.bezierCurveTo(cx + w * 0.22, h * 0.80, cx + w * 0.14, h * 0.55, cx + w * 0.09, h * 0.41);
+            ctx.bezierCurveTo(cx + w * 0.06, h * 0.39, cx - w * 0.06, h * 0.39, cx - w * 0.09, h * 0.41);
+            ctx.closePath();
+            ctx.fill();
+            ctx.lineWidth = w * 0.05;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(cx - w * 0.14, h * 0.52);
+            ctx.quadraticCurveTo(cx - w * 0.18, h * 0.40, cx - w * 0.10, h * 0.27);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx + w * 0.14, h * 0.52);
+            ctx.quadraticCurveTo(cx + w * 0.18, h * 0.40, cx + w * 0.10, h * 0.27);
+            ctx.stroke();
+            // Carve hollow mouth and eyes
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.ellipse(cx, h * 0.33, w * 0.025, h * 0.04, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cx - w * 0.035, h * 0.22, w * 0.014, h * 0.02, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(cx + w * 0.035, h * 0.22, w * 0.014, h * 0.02, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+          }
+        },
+        {
+          // Da Vinci's Vitruvian Man — circle + square + figure with 4 arms & 4 legs
+          name: 'vitruvian',
+          draw(ctx, w, h) {
+            ctx.strokeStyle = '#fff';
+            ctx.fillStyle = '#fff';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(2, Math.min(w, h) * 0.008);
+            const cx = w * 0.5, cy = h * 0.52;
+            const r = Math.min(w, h) * 0.38;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeRect(cx - r * 0.92, cy - r * 0.92, r * 1.84, r * 1.84);
+            ctx.beginPath();
+            ctx.arc(cx, cy - r * 0.72, r * 0.12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - r * 0.60);
+            ctx.lineTo(cx, cy + r * 0.22);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - r * 0.92, cy - r * 0.20);
+            ctx.lineTo(cx + r * 0.92, cy - r * 0.20);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx - r * 0.05, cy - r * 0.20);
+            ctx.lineTo(cx - r * 0.70, cy - r * 0.58);
+            ctx.moveTo(cx + r * 0.05, cy - r * 0.20);
+            ctx.lineTo(cx + r * 0.70, cy - r * 0.58);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy + r * 0.22);
+            ctx.lineTo(cx - r * 0.08, cy + r * 0.92);
+            ctx.moveTo(cx, cy + r * 0.22);
+            ctx.lineTo(cx + r * 0.08, cy + r * 0.92);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy + r * 0.22);
+            ctx.lineTo(cx - r * 0.42, cy + r * 0.88);
+            ctx.moveTo(cx, cy + r * 0.22);
+            ctx.lineTo(cx + r * 0.42, cy + r * 0.88);
+            ctx.stroke();
+          }
+        },
+        {
+          // Dalí's Persistence of Memory — clock drooping off an edge
+          name: 'melting-clock',
+          draw(ctx, w, h) {
+            ctx.strokeStyle = '#fff';
+            ctx.fillStyle = '#fff';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(2, Math.min(w, h) * 0.010);
+            const cx = w * 0.42, cy = h * 0.42;
+            const r = Math.min(w, h) * 0.23;
+            ctx.beginPath();
+            ctx.moveTo(cx - r, cy);
+            ctx.bezierCurveTo(cx - r, cy - r * 1.1, cx + r * 0.5, cy - r * 1.15, cx + r * 1.05, cy - r * 0.3);
+            ctx.bezierCurveTo(cx + r * 1.5, cy + r * 0.4, cx + r * 1.8, cy + r * 1.4, cx + r * 1.3, cy + r * 2.0);
+            ctx.bezierCurveTo(cx + r * 1.15, cy + r * 1.7, cx + r * 1.0, cy + r * 1.2, cx + r * 0.7, cy + r * 0.85);
+            ctx.bezierCurveTo(cx + r * 0.2, cy + r * 0.95, cx - r * 0.7, cy + r * 0.8, cx - r, cy);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + r * 0.55, cy - r * 0.18);
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + r * 0.08, cy - r * 0.65);
+            ctx.stroke();
+            for (let i = 0; i < 12; i++) {
+              const ang = i / 12 * Math.PI * 2 - Math.PI / 2;
+              if (ang > Math.PI * 0.15 && ang < Math.PI * 0.65) continue;
+              const x1 = cx + Math.cos(ang) * (r * 0.78);
+              const y1 = cy + Math.sin(ang) * (r * 0.78);
+              const x2 = cx + Math.cos(ang) * (r * 0.92);
+              const y2 = cy + Math.sin(ang) * (r * 0.92);
+              ctx.beginPath();
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x2, y2);
+              ctx.stroke();
+            }
+          }
+        },
+      ];
 
-        const dt = Math.min(0.05, Math.max(0, (tCycleMs - prevResonanceMs) / 1000));
-        prevResonanceMs = tCycleMs;
+      let artworkIdx = Math.floor(Math.random() * ARTWORKS.length);
+      let artworkShownSince = 0;
+      let artworkTargetsValid = false;
+      let artworkStartMs = 0;
+      const artworkTargets = new Float32Array(PARTICLE_COUNT * 2);
 
-        // Coupling — amplitude-weighted means for mode & frequency, plus amplitude diffusion
-        let ampSum = 0, modeWSum = 0, freqWSum = 0;
-        for (let i = 0; i < RES_N_STRINGS; i++) {
-          ampSum   += resAmp[i];
-          modeWSum += resAmp[i] * resMode[i];
-          freqWSum += resAmp[i] * resFreq[i];
-        }
-        const ampGuard = Math.max(0.001, ampSum);
-        const meanMode = modeWSum / ampGuard;
-        const meanFreq = freqWSum / ampGuard;
-        const ampMean  = ampSum / RES_N_STRINGS;
-
-        for (let i = 0; i < RES_N_STRINGS; i++) {
-          const otherAmp = ampSum - resAmp[i];
-          const couplingK = 0.20 * otherAmp;
-          resMode[i] += (meanMode - resMode[i]) * couplingK * dt;
-          resFreq[i] += (meanFreq - resFreq[i]) * couplingK * dt;
-          resAmp[i]  += (ampMean - resAmp[i]) * 0.32 * dt;
-          resAmp[i]  *= Math.exp(-0.035 * dt);  // very slow global decay
-        }
-
-        // Layout — reuse the flow safe region
+      function _rasterizeArtwork(idx) {
         const sr = _flowSafeRegion();
-        const spanL = sr.l + sr.w * 0.05;
-        const spanR = sr.r - sr.w * 0.05;
-        const spanW = spanR - spanL;
-        const stringSpacing = sr.h / (RES_N_STRINGS + 1);
-        const maxDisp = stringSpacing * 0.40;
-
-        const tSec = tCycleMs / 1000;
+        const w = Math.max(80, Math.round(sr.w));
+        const h = Math.max(80, Math.round(sr.h));
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const ctx = off.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+        ARTWORKS[idx].draw(ctx, w, h);
+        const img = ctx.getImageData(0, 0, w, h).data;
+        const filled = [];
+        for (let y = 0; y < h; y++) {
+          const rowBase = y * w;
+          for (let x = 0; x < w; x++) {
+            if (img[(rowBase + x) * 4 + 3] > 96) filled.push([sr.l + x, sr.t + y]);
+          }
+        }
+        if (filled.length === 0) {
+          const cx = sr.l + sr.w / 2, cy = sr.t + sr.h / 2;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            artworkTargets[i*2]   = cx;
+            artworkTargets[i*2+1] = cy;
+          }
+          return;
+        }
+        let seed = (idx * 2654435761) ^ filled.length ^ (w * 7919);
+        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
+        for (let i = filled.length - 1; i > 0; i--) {
+          const j = Math.floor(rnd() * (i + 1));
+          const tmp = filled[i]; filled[i] = filled[j]; filled[j] = tmp;
+        }
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const s = resString[i];
-          const x = resXFrac[i];
-          const baselineY = sr.t + stringSpacing * (s + 1);
-          const spatial = Math.sin(resMode[s] * Math.PI * x);
-          const temporal = Math.sin(resFreq[s] * tSec + resPhase[s]);
-          const yOff = resAmp[s] * maxDisp * spatial * temporal;
-          animTargets[i*2]   = spanL + x * spanW;
-          animTargets[i*2+1] = baselineY + yOff;
+          const p = filled[i % filled.length];
+          artworkTargets[i*2]   = p[0];
+          artworkTargets[i*2+1] = p[1];
+        }
+      }
+
+      function _artworksReset() {
+        artworkIdx = Math.floor(Math.random() * ARTWORKS.length);
+        artworkTargetsValid = false;
+        artworkShownSince = 0;
+      }
+
+      function computeArtworkTargets(tMs) {
+        if (!artworkTargetsValid) {
+          _rasterizeArtwork(artworkIdx);
+          artworkTargetsValid = true;
+          artworkShownSince = tMs;
+        } else if (tMs - artworkShownSince >= ARTWORK_HOLD_MS) {
+          artworkIdx = (artworkIdx + 1) % ARTWORKS.length;
+          _rasterizeArtwork(artworkIdx);
+          artworkShownSince = tMs;
+        }
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          animTargets[i*2]   = artworkTargets[i*2];
+          animTargets[i*2+1] = artworkTargets[i*2+1];
         }
       }
 
@@ -4364,6 +4531,9 @@
       let forgedBoundsKey = '';
       let forgedPrevPhase = 1;
       let forgedCx = 0, forgedStrikeY = 0;
+      let forgedPivotStrikeX = 0, forgedPivotStrikeY = 0;
+      let forgedPivotApexDx  = 0, forgedPivotApexDy  = 0;
+      let forgedHammerTotalLen = 0;
 
       (function assignForgedRoles() {
         let idx = 0;
@@ -4455,31 +4625,43 @@
           forgedAbsY[i] = avy[seg] + (avy[j] - avy[seg]) * localT;
         }
 
-        // Hammer — local offsets. (0,0) is bottom-center of head.
-        const headHalfW   = sr.w * 0.045;
-        const headH       = sr.h * 0.09;
-        const handleHalfW = sr.w * 0.012;
-        const handleLen   = sr.h * 0.26;
-        const handleBottom = -headH;
-        const handleTop    = -headH - handleLen;
-        const headCount = Math.floor(FORGED_HAMMER_COUNT * 0.6);
+        // Hammer — local coords in hammer frame. Pivot at (0,0) = blacksmith's
+        // grip (top of handle). +y runs along handle (screen-down at θ=0).
+        //
+        // Head is aligned with the handle (long axis parallel to handle),
+        // attached END-ON at the handle's bottom. The head's bottom short
+        // face is the STRIKING FACE — matches how real hammers work, where
+        // the skinny end face meets the workpiece. Handle stops at head-top,
+        // no overlap.
+        const handleLen   = sr.h * 0.20;
+        const handleHalfW = Math.max(1.5, sr.w * 0.010);
+        const headHalfW   = Math.max(3, sr.w * 0.028);   // narrow (along X)
+        const headH       = Math.max(6, sr.h * 0.095);   // tall along handle axis
+        const headTopLY   = handleLen;                   // head begins exactly where handle ends
+        const headBotLY   = handleLen + headH;           // striking face
+
+        // 65% head / 35% handle — head deserves more particle weight.
+        const headCount   = Math.floor(FORGED_HAMMER_COUNT * 0.65);
         const handleCount = FORGED_HAMMER_COUNT - headCount;
-        const headSegs = [
-          [[-headHalfW, -headH], [ headHalfW, -headH]],
-          [[ headHalfW, -headH], [ headHalfW, 0]],
-          [[ headHalfW, 0],       [-headHalfW, 0]],
-          [[-headHalfW, 0],       [-headHalfW, -headH]],
-        ];
-        const headSLens = [2 * headHalfW, headH, 2 * headHalfW, headH];
-        const headPerim = headSLens.reduce((s, n) => s + n, 0);
+
         const handleSegs = [
-          [[-handleHalfW, handleTop],    [ handleHalfW, handleTop]],
-          [[ handleHalfW, handleTop],    [ handleHalfW, handleBottom]],
-          [[ handleHalfW, handleBottom], [-handleHalfW, handleBottom]],
-          [[-handleHalfW, handleBottom], [-handleHalfW, handleTop]],
+          [[-handleHalfW, 0],          [ handleHalfW, 0]],
+          [[ handleHalfW, 0],          [ handleHalfW, handleLen]],
+          [[ handleHalfW, handleLen],  [-handleHalfW, handleLen]],
+          [[-handleHalfW, handleLen],  [-handleHalfW, 0]],
         ];
         const handleSLens = [2 * handleHalfW, handleLen, 2 * handleHalfW, handleLen];
         const handlePerim = handleSLens.reduce((s, n) => s + n, 0);
+
+        const headSegs = [
+          [[-headHalfW, headTopLY], [ headHalfW, headTopLY]],
+          [[ headHalfW, headTopLY], [ headHalfW, headBotLY]],
+          [[ headHalfW, headBotLY], [-headHalfW, headBotLY]],
+          [[-headHalfW, headBotLY], [-headHalfW, headTopLY]],
+        ];
+        const headSLens = [2 * headHalfW, headH, 2 * headHalfW, headH];
+        const headPerim = headSLens.reduce((s, n) => s + n, 0);
+
         let hc = 0;
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           if (forgedRole[i] !== 2) continue;
@@ -4500,8 +4682,18 @@
           hc++;
         }
 
-        forgedCx      = sr.l + sr.w * 0.5;
-        forgedStrikeY = sr.t + sr.h * 0.42;
+        forgedCx           = sr.l + sr.w * 0.5;
+        forgedStrikeY      = sr.t + sr.h * 0.42;      // anvil top
+        forgedHammerTotalLen = headBotLY;
+        // Strike pivot is placed so that at θ=0, head-bottom sits ON the anvil top.
+        forgedPivotStrikeX = forgedCx;
+        forgedPivotStrikeY = forgedStrikeY - headBotLY;
+        // Apex pivot offset: up and slightly back, as if the arm has retracted
+        // the shoulder/elbow for the swing. Pivot *translates* between strike
+        // and apex positions during the cycle, so the motion isn't a pure
+        // rotation — it's translation + rotation, like a mechanical arm.
+        forgedPivotApexDx  = -sr.w * 0.05;
+        forgedPivotApexDy  = -sr.h * 0.04;
 
         // Seed sparks at impact — frame-0 wrap will launch them.
         for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -4522,31 +4714,39 @@
         const wrapped = phase < forgedPrevPhase;
         forgedPrevPhase = phase;
 
-        const yStrike = forgedStrikeY;
-        const yApex   = sr.t + sr.h * 0.05;
-        const yBounce = yStrike - sr.h * 0.10;
-        let hy;
-        if (phase < 0.08) {
-          const t = phase / 0.08;
-          const eo = 1 - (1 - t) * (1 - t);
-          hy = yStrike + (yBounce - yStrike) * eo;
+        // --- Hammer motion: translation + rotation around a moving pivot ---
+        // raiseT ∈ [0,1]: 0 = hammer at strike position, 1 = hammer at apex.
+        // Both θ and pivot position interpolate with this single parameter,
+        // giving the swing a mechanical-arm feel (shoulder retracts + rotates).
+        // Cycle phases:
+        //   0    – 0.07  impact hold
+        //   0.07 – 0.55  ease-out rise to apex (fast early, slows into apex)
+        //   0.55 – 0.75  hold at apex
+        //   0.75 – 1.0   ease-in cubic fall (slow start, accelerates into strike)
+        const THETA_STRIKE = 0;
+        const THETA_APEX   = -1.85;  // ~-106°, handle swung up-left
+        let raiseT;
+        if (phase < 0.07) {
+          raiseT = 0;
         } else if (phase < 0.55) {
-          const t = (phase - 0.08) / 0.47;
-          const eio = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-          hy = yBounce + (yApex - yBounce) * eio;
-        } else if (phase < 0.78) {
-          hy = yApex;
+          const t = (phase - 0.07) / 0.48;
+          raiseT = 1 - (1 - t) * (1 - t);
+        } else if (phase < 0.75) {
+          raiseT = 1;
         } else {
-          const t = (phase - 0.78) / 0.22;
-          const ei = t * t * t;
-          hy = yApex + (yStrike - yApex) * ei;
+          const t = (phase - 0.75) / 0.25;
+          raiseT = 1 - t * t * t;
         }
+        const theta   = THETA_STRIKE + (THETA_APEX - THETA_STRIKE) * raiseT;
+        const pivotX  = forgedPivotStrikeX + forgedPivotApexDx * raiseT;
+        const pivotY  = forgedPivotStrikeY + forgedPivotApexDy * raiseT;
+        const cosT = Math.cos(theta), sinT = Math.sin(theta);
 
         if (wrapped) {
           for (let i = 0; i < PARTICLE_COUNT; i++) {
             if (forgedRole[i] !== 3) continue;
             px[i] = forgedCx + (Math.random() - 0.5) * sr.w * 0.03;
-            py[i] = yStrike;
+            py[i] = forgedStrikeY;
             const angle = -Math.PI * (0.1 + Math.random() * 0.8);
             const speed = 220 + Math.random() * 380;
             vx[i] = Math.cos(angle) * speed;
@@ -4561,15 +4761,23 @@
             animTargets[i*2+1] = forgedAbsY[i];
             flowAlpha[i] = 1;
           } else if (role === 2) {
-            animTargets[i*2]   = forgedCx + forgedAbsX[i];
-            animTargets[i*2+1] = hy + forgedAbsY[i];
+            // Rotate local (lx, ly) around pivot by theta. Write directly to
+            // px/py so the hammer doesn't lag behind via spring — critical for
+            // the head to actually touch the anvil at the strike moment.
+            const lx = forgedAbsX[i], ly = forgedAbsY[i];
+            const wx = pivotX + lx * cosT + ly * sinT;
+            const wy = pivotY - lx * sinT + ly * cosT;
+            px[i] = wx; py[i] = wy;
+            vx[i] = 0; vy[i] = 0;
+            animTargets[i*2]   = wx;
+            animTargets[i*2+1] = wy;
             flowAlpha[i] = 1;
           } else {
             // Spark: gravity accumulates, shared loop integrates position.
             vy[i] += FORGED_GRAVITY * dt;
             animTargets[i*2]   = px[i];
             animTargets[i*2+1] = py[i];
-            const fade = Math.min(1, phase / 0.55);
+            const fade = Math.min(1, phase / 0.38);
             flowAlpha[i] = Math.max(0, 1 - fade);
           }
         }
@@ -4655,16 +4863,16 @@
           brushStartMs = performance.now();
           prevBrushCycle = 0;
         }
-        if (word === 'RESONANCE') {
-          resonanceStartMs = performance.now();
-          _resonanceReset();
+        if (word === 'ARTWORKS') {
+          artworkStartMs = performance.now();
+          _artworksReset();
         }
         // Reset alpha — FLOW/ALIVE modulate per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         if (word === 'ALIVE') aliveInitialized = false;
         if (word === 'FORGED') forgedInitialized = false;
         const label = document.getElementById('phil-shape-name');
-        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', RESONANCE: 'resonance' };
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', ARTWORKS: 'iconic works' };
         if (label) label.textContent = labelMap[word] || word;
       }
 
@@ -4730,8 +4938,8 @@
           computeAliveTargets(t, dt);
         } else if (isAnimated && currentShape === 'FORGED') {
           computeForgedTargets(t, dt);
-        } else if (isAnimated && currentShape === 'RESONANCE') {
-          computeResonanceTargets(t - resonanceStartMs);
+        } else if (isAnimated && currentShape === 'ARTWORKS') {
+          computeArtworkTargets(t - artworkStartMs);
         }
 
         let arrived = 0;
@@ -4859,20 +5067,39 @@
         if (_scrollRaf) return;
         _scrollRaf = requestAnimationFrame(syncCanvasPos);
       }
+      // On mobile, window.resize fires spuriously during scroll (Safari
+       // emits these even when the URL bar isn't visibly moving) and each
+       // one triggers resize() → rebuildShape(), which resets the simulation
+       // to its idle frame. Mobile can't actually change window size mid-
+       // session — only orientationchange is a real layout event. So on
+       // mobile we skip the WebGL rebuild on resize and only do it on
+       // orientation change. Desktop keeps the prior behavior so real
+       // window resizes still work.
+      function maybeWebGLResize() {
+        if (mqlPhil.matches) return;
+        resize();
+      }
       window.addEventListener('scroll', scheduleSync, { passive: true });
       window.addEventListener('resize', () => {
         scheduleSync();
-        if (typeof resize === 'function') resize();
+        maybeWebGLResize();
+      });
+      window.addEventListener('orientationchange', () => {
+        // Let the browser settle the new viewport before reading dimensions.
+        setTimeout(() => { resize(); scheduleSync(); }, 180);
       });
       mqlPhil.addEventListener('change', () => {
-        if (typeof resize === 'function') resize();
+        // Real layout mode change (mobile <-> desktop): rebuild once.
+        resize();
         scheduleSync();
       });
       // Run once after layout settles so initial position is right.
       requestAnimationFrame(syncCanvasPos);
 
       // --- init ---
-      window.addEventListener('resize', resize);
+      // (The extra window.addEventListener('resize', resize) that used to
+      //  live here was a duplicate of the listener above — removed so we
+      //  don't fire rebuildShape twice per event on desktop either.)
       resize();
       seedParticlePositions();
       rebuildShape(currentShape);
