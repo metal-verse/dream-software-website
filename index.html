@@ -4,9 +4,92 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dream Software Solutions — Crafted Software for Bold Ideas</title>
+  <meta name="description" content="Indiana-based software studio building custom applications, AI-integrated tools, and creative interactive experiences. Software worth looking at, worth talking about.">
+  <link rel="canonical" href="https://dreamsoftwaresolutions.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dreamsoftwaresolutions.com/">
+  <meta property="og:title" content="Dream Software Solutions — Crafted Software for Bold Ideas">
+  <meta property="og:description" content="Indiana-based software studio building custom applications, AI-integrated tools, and creative interactive experiences.">
+  <meta property="og:site_name" content="Dream Software Solutions">
+  <meta property="og:image" content="https://dreamsoftwaresolutions.com/assets/favicon.svg">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Dream Software Solutions">
+  <meta name="twitter:description" content="Software worth looking at. Software worth talking about.">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="alternate icon" type="image/png" href="assets/favicon.svg">
   <meta name="theme-color" content="#1A1A1A">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "How much does a typical project cost?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Custom builds are priced against business impact, not against a rate card. AI workshops typically run $750–$3,500 depending on length. Multi-session enablement engagements run $5,000–$12,000. Discovery sprints run $2,500–$5,000. Custom build engagements typically start around $8,000 and scale with scope. Hourly advisory is $125–$175/hr."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How long does a project take?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Most projects run 4–12 weeks from kickoff to delivery. Workshops can usually be scheduled within two weeks. A concrete timeline is provided as part of the proposal."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What kinds of projects do you take on?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Custom applications, AI-integrated tooling, creative and interactive experiences, and technical advisory. We lean toward work where craft matters."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What technologies do you work with?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "TypeScript, Python, Rust, React, Three.js / WebGL, and modern AI/ML frameworks. Backend experience across Node, FastAPI, Postgres, and typical cloud infrastructure."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does your AI training cover?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Workshops are tailored to your team's current level. Common topics include effective prompt design, building AI-assisted workflows, integrating LLMs into existing products, and developing a grounded sense of what these systems can and can't do."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can you work on an existing codebase?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. We start with an honest audit, share what we find, and propose a path forward — whether building on what exists, refactoring a specific layer, or a targeted rewrite."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do you work with remote clients?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. We're based in Indiana and work with clients anywhere."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What happens after a project ships?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Clean, documented code your team can maintain and extend. Optional retainer, defined support window, or later-phase engagements are available."
+        }
+      }
+    ]
+  }
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     /* ===== FORGE THEME ===== */
@@ -115,6 +198,10 @@
     #hero {
       position: relative;
       min-height: 100vh;
+      /* Use the small viewport (URL-bar visible) on mobile so the scroll
+         indicator doesn't sit under Safari's chrome on first paint. Falls
+         back to 100vh on browsers without svh support. */
+      min-height: 100svh;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -213,6 +300,8 @@
       padding: 6rem 3rem;
       max-width: 1200px;
       margin: 0 auto;
+      /* Offset in-page anchor jumps so the fixed nav doesn't cover the heading */
+      scroll-margin-top: 80px;
     }
 
     .section-label {
@@ -1207,6 +1296,37 @@
       color: var(--iron);
     }
 
+    /* ===== TOUCH / MOTION / ZOOM GUARDS ===== */
+    /* On touch devices, hover states persist after tap and leave buttons/cards
+       "pressed" until the user taps elsewhere. Neutralize the hover transforms
+       when the device has no true hover capability. */
+    @media (hover: none) {
+      .nav-cta:hover,
+      .hero-cta:hover,
+      .service-card:hover,
+      .portfolio-card:hover,
+      .cta-btn:hover,
+      .form-submit:hover { transform: none; box-shadow: none; }
+      .service-card:hover::before { transform: scaleX(0); }
+    }
+    /* Respect users who ask for reduced motion — freeze the background
+       animations and transitions so the site is calm. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+      #voronoi-canvas,
+      #philosophy-canvas { display: none; }
+    }
+    /* iOS auto-zooms into form inputs with font-size < 16px on focus.
+       Force 16px on mobile only so the rest of the UI rhythm is preserved. */
+    @media (max-width: 700px) {
+      input, select, textarea { font-size: 16px !important; }
+    }
+
     /* ===== HAMBURGER / MOBILE NAV ===== */
     .nav-toggle {
       display: none;
@@ -1382,7 +1502,7 @@
 
   <!-- HERO -->
   <section id="hero">
-    <canvas id="voronoi-canvas"></canvas>
+    <canvas id="voronoi-canvas" aria-hidden="true"></canvas>
     <div class="hero-content">
       <svg class="hero-diamond" width="60" height="60" viewBox="0 0 100 100">
         <defs>
@@ -1487,7 +1607,7 @@
         </div>
       </div>
     </div>
-    <canvas id="philosophy-canvas"></canvas>
+    <canvas id="philosophy-canvas" aria-hidden="true"></canvas>
   </section>
 
   <!-- PORTFOLIO -->
@@ -1501,7 +1621,7 @@
       <!-- CALL TRACKING — client project, IT shop -->
       <div class="portfolio-card">
         <div class="portfolio-thumb">
-          <canvas class="thumb-pattern" data-pattern="workflow"></canvas>
+          <canvas class="thumb-pattern" aria-hidden="true" data-pattern="workflow"></canvas>
           <span class="thumb-label">Client Project</span>
         </div>
         <div class="portfolio-info">
@@ -1547,7 +1667,7 @@
       <!-- TONI — operational intelligence platform -->
       <div class="portfolio-card">
         <div class="portfolio-thumb">
-          <canvas class="thumb-pattern" data-pattern="toni"></canvas>
+          <canvas class="thumb-pattern" aria-hidden="true" data-pattern="toni"></canvas>
           <span class="thumb-label">Internal Product</span>
         </div>
         <div class="portfolio-info">
@@ -1570,7 +1690,7 @@
       <!-- INTO THE CRYPT — game dev showcase -->
       <div class="portfolio-card">
         <div class="portfolio-thumb">
-          <canvas class="thumb-pattern" data-pattern="crypt"></canvas>
+          <canvas class="thumb-pattern" aria-hidden="true" data-pattern="crypt"></canvas>
           <span class="thumb-label">Game Development</span>
         </div>
         <div class="portfolio-info">
@@ -2353,7 +2473,11 @@
       draw();
     })();
 
-    // Thumbnail pattern canvases (decorative previews)
+    // Thumbnail pattern canvases (decorative previews).
+    // Wrapped so we can redraw on resize / orientation change — the canvas
+    // bitmap is sized from its parent at draw time; if we never redraw it
+    // looks blurry after a viewport change.
+    function drawThumbnails() {
     document.querySelectorAll('.thumb-pattern').forEach(c => {
       const ctx = c.getContext('2d');
       const parent = c.parentElement;
@@ -2665,6 +2789,14 @@
         }
       }
     });
+    }
+    drawThumbnails();
+    let _thumbRaf = 0;
+    window.addEventListener('resize', () => {
+      if (_thumbRaf) return;
+      _thumbRaf = requestAnimationFrame(() => { _thumbRaf = 0; drawThumbnails(); });
+    });
+    window.addEventListener('orientationchange', () => setTimeout(drawThumbnails, 120));
 
     // Smooth scroll for nav links
     document.querySelectorAll('a[href^="#"]').forEach(a => {
@@ -2876,7 +3008,15 @@
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
       const ANIMATED_SHAPES = { BRUSH: true, FLOW: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
-      const SWATCH_LINES = ['we build', 'exceptional'];
+      const SWATCH_VARIANTS = [
+        ['we build', 'exceptional'],
+        ['code as', 'craft'],
+        ['built with', 'care'],
+        ['forged for', 'bold ideas'],
+        ['built', 'to last'],
+      ];
+      let swatchVariantIdx = Math.floor(Math.random() * SWATCH_VARIANTS.length);
+      let prevBrushCycle = 0;   // tracks last frame's cycle value to detect loop wrap
       // Phase boundaries (fractions of cycle). Calibrated to a 21.5s cycle.
       const PH_IDLE_END     = 0.12;   // brush-only hold ~2.6s
       const PH_PAINT_END    = 0.35;   // paint ~4.9s
@@ -3087,13 +3227,14 @@
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic'; // more consistent metrics than 'middle'
-        const numLines = SWATCH_LINES.length;
+        const activeLines = SWATCH_VARIANTS[swatchVariantIdx];
+        const numLines = activeLines.length;
         const lineSlotH = bh / numLines;
         const mkFont = (s) => `italic 600 ${s}px 'EB Garamond', Georgia, 'Times New Roman', serif`;
         // Per-line font sizing: each line maximizes its own slot width
         const lineMeta = [];
         for (let li = 0; li < numLines; li++) {
-          const line = SWATCH_LINES[li];
+          const line = activeLines[li];
           let fs = Math.max(12, Math.floor(lineSlotH * 0.92));
           ctx.font = mkFont(fs);
           while (ctx.measureText(line).width > bw * 0.95 && fs > 12) {
@@ -3119,7 +3260,7 @@
             if (img[(rowBase + x) * 4 + 3] > 96) filled.push([l + x, t + y]);
           }
         }
-        let seed = ((SWATCH_LINES.join('').length) * 2654435761) ^ (filled.length || 1) ^ (bw * 7919);
+        let seed = ((activeLines.join('').length + swatchVariantIdx * 17) * 2654435761) ^ (filled.length || 1) ^ (bw * 7919);
         const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
         for (let i = filled.length - 1; i > 0; i--) {
           const j = Math.floor(rnd() * (i + 1));
@@ -3158,6 +3299,14 @@
 
       function computeBrushTargets(tCycleMs) {
         const cycle = (tCycleMs / BRUSH_CYCLE_MS) % 1;
+
+        // Cycle-wrap detection: advance to the next text variant each time the animation loops.
+        // Only triggers once per loop (when cycle resets from ~1 to ~0).
+        if (cycle < prevBrushCycle) {
+          swatchVariantIdx = (swatchVariantIdx + 1) % SWATCH_VARIANTS.length;
+          swatchRasterBounds = null; // force re-raster with the new lines
+        }
+        prevBrushCycle = cycle;
 
         // --- safe region ---
         // On desktop the canvas is a full-bleed background of the section, so
