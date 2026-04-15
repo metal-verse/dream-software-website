@@ -492,6 +492,183 @@
       line-height: 1.6;
     }
 
+    /* ===== ABOUT ===== */
+    #about {
+      border-top: 1px solid var(--graphite);
+    }
+
+    .about-grid {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 3rem;
+      align-items: start;
+      max-width: 900px;
+    }
+
+    .about-portrait {
+      position: relative;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--slate);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+    }
+
+    .about-portrait img {
+      display: block;
+      width: 100%;
+      height: auto;
+      filter: grayscale(15%) contrast(1.02);
+    }
+
+    .about-portrait::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(212, 134, 58, 0.08), transparent 50%);
+      pointer-events: none;
+    }
+
+    .about-body h3 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--warm-white);
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.5px;
+    }
+
+    .about-role {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--amber);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    .about-body p {
+      color: var(--light);
+      line-height: 1.8;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+
+    .about-body p + p { color: var(--silver); }
+
+    @media (max-width: 700px) {
+      .about-grid { grid-template-columns: 1fr; gap: 2rem; }
+      .about-portrait { max-width: 260px; }
+    }
+
+    /* ===== PRICING TIERS (inside FAQ) ===== */
+    .pricing-tiers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin: 1.25rem 0 0.5rem;
+    }
+
+    .pricing-tier {
+      background: var(--charcoal);
+      border: 1px solid var(--slate);
+      border-top: 2px solid var(--amber);
+      border-radius: 4px;
+      padding: 1rem;
+    }
+
+    .pricing-tier .tier-name {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      color: var(--warm-white);
+      margin-bottom: 0.25rem;
+    }
+
+    .pricing-tier .tier-price {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--copper);
+      margin-bottom: 0.5rem;
+    }
+
+    .pricing-tier .tier-desc {
+      color: var(--silver);
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 700px) {
+      .pricing-tiers { grid-template-columns: 1fr; }
+    }
+
+    /* ===== FAQ ===== */
+    #faq {
+      border-top: 1px solid var(--graphite);
+    }
+
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-width: 820px;
+    }
+
+    .faq-item {
+      background: var(--graphite);
+      border: 1px solid var(--slate);
+      border-left: 2px solid var(--amber);
+      border-radius: 4px;
+      padding: 1.25rem 1.5rem;
+      transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    }
+
+    .faq-item:hover {
+      border-color: var(--iron);
+      border-left-color: var(--copper);
+    }
+
+    .faq-item[open] {
+      background: #202020;
+      border-left-color: var(--copper);
+    }
+
+    .faq-item summary {
+      cursor: pointer;
+      list-style: none;
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      color: var(--warm-white);
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .faq-item summary::-webkit-details-marker { display: none; }
+
+    .faq-item summary::after {
+      content: '+';
+      font-family: var(--font-mono);
+      color: var(--amber);
+      font-size: 1.4rem;
+      font-weight: 400;
+      transition: transform 0.3s ease;
+      flex-shrink: 0;
+    }
+
+    .faq-item[open] summary::after {
+      content: '–';
+      color: var(--copper);
+    }
+
+    .faq-item p {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--slate);
+      color: var(--silver);
+      font-size: 0.95rem;
+      line-height: 1.8;
+    }
+
     /* ===== TESTIMONIALS ===== */
     #testimonials {
       border-top: 1px solid var(--graphite);
@@ -930,6 +1107,9 @@
       <a href="#philosophy">Philosophy</a>
       <a href="#portfolio">Work</a>
       <a href="#process">Process</a>
+      <a href="#about">About</a>
+      <a href="#faq" data-faq="pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
       <a href="javascript:void(0)" class="nav-cta" onclick="openContactForm()">Start a Project</a>
     </div>
   </nav>
@@ -1044,7 +1224,7 @@
       <!-- CALL TRACKING — client project, IT shop -->
       <div class="portfolio-card">
         <div class="portfolio-thumb">
-          <canvas class="thumb-pattern" data-pattern="toni"></canvas>
+          <canvas class="thumb-pattern" data-pattern="workflow"></canvas>
           <span class="thumb-label">Client Project</span>
         </div>
         <div class="portfolio-info">
@@ -1065,7 +1245,7 @@
         </div>
       </div>
       <!-- RESPYTE — clickable, links to live site -->
-      <a class="portfolio-card" href="https://respyte.dev" target="_blank" rel="noopener">
+      <a class="portfolio-card" href="https://respyte.dev/world" target="_blank" rel="noopener">
         <div class="portfolio-thumb" style="background: #0a0a12;">
           <img src="assets/respyte-preview.png" alt="Respyte — Isometric 3D common room with fireplace" style="width:100%; height:100%; object-fit:cover; object-position:center 30%;">
           <span class="thumb-label" style="position:absolute;">Live Site</span>
@@ -1184,6 +1364,181 @@
     </div>
   </section>
   -->
+
+  <!-- ABOUT -->
+  <section id="about">
+    <div class="section-label">// Who's Behind This</div>
+    <div class="section-title">About</div>
+    <div class="about-grid">
+      <div class="about-portrait">
+        <img src="assets/ryan-lechner.jpg" alt="Ryan Lechner" loading="lazy">
+      </div>
+      <div class="about-body">
+        <h3>Ryan Lechner</h3>
+        <div class="about-role">Founder &amp; Builder</div>
+        <p>
+          I sit down with you, hear the thing you're actually trying to solve, and turn it into
+          software that works — and that you'd be glad to look at. Beautiful and functional aren't
+          opposites; I treat them as the same job.
+        </p>
+        <p>
+          Background spans language and engineering. I read systems the way I read text: for
+          intent, rhythm, and the parts that are load-bearing. Currently building a handful of
+          projects across AI tooling, creative interfaces, and developer experience.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="section-label">// Frequently Asked</div>
+    <div class="section-title">Common Questions</div>
+    <div class="section-desc">
+      Answers to what people usually want to know before starting a conversation.
+    </div>
+    <div class="faq-list">
+      <details class="faq-item" id="faq-pricing">
+        <summary>How much does a typical project cost?</summary>
+        <div>
+          <p style="border-top:none; padding-top:0; margin-top:1rem;">
+            Custom builds are priced against the impact they create for your business, not against
+            a rate card — every serious engagement starts with a discovery conversation and a
+            scoped proposal. For the more repeatable work, here's the shape of it:
+          </p>
+          <div class="pricing-tiers">
+            <div class="pricing-tier">
+              <div class="tier-name">AI Workshop — Half Day</div>
+              <div class="tier-price">$750 – $1,500</div>
+              <div class="tier-desc">
+                Small team, focused topic. Prompting, practical LLM use, or a specific workflow
+                your team wants to get fluent in.
+              </div>
+            </div>
+            <div class="pricing-tier">
+              <div class="tier-name">AI Workshop — Full Day</div>
+              <div class="tier-price">$1,800 – $3,500</div>
+              <div class="tier-desc">
+                Deeper, hands-on. Build something real together — an integration, an internal
+                tool, or a working playbook your team keeps after we leave.
+              </div>
+            </div>
+            <div class="pricing-tier">
+              <div class="tier-name">AI Enablement Engagement</div>
+              <div class="tier-price">$5,000 – $12,000</div>
+              <div class="tier-desc">
+                Multi-session program over a few weeks. Training plus embedded help standing up
+                real workflows your team will use day-to-day.
+              </div>
+            </div>
+            <div class="pricing-tier">
+              <div class="tier-name">Discovery Sprint</div>
+              <div class="tier-price">$2,500 – $5,000</div>
+              <div class="tier-desc">
+                A couple of weeks to stress-test an idea — research, prototype, and an honest
+                written assessment of what's worth building and what isn't.
+              </div>
+            </div>
+            <div class="pricing-tier">
+              <div class="tier-name">Custom Build</div>
+              <div class="tier-price">Scoped to impact</div>
+              <div class="tier-desc">
+                Applications, integrations, creative interfaces. Quoted against the outcome, not
+                by the hour. Typical engagements start around $8K and go up with scope.
+              </div>
+            </div>
+            <div class="pricing-tier">
+              <div class="tier-name">Advisory / Hourly</div>
+              <div class="tier-price">$125 – $175 / hr</div>
+              <div class="tier-desc">
+                For one-off technical questions, second opinions, architecture reviews, or
+                ongoing retainer-style availability.
+              </div>
+            </div>
+          </div>
+          <p style="font-size:0.85rem;">
+            These are ranges, not final numbers. Nonprofit, education, and early-stage projects
+            we care about get flexibility. You'll always see the real number before you commit.
+          </p>
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>How long does a project take?</summary>
+        <p>
+          Small, well-scoped work can ship in days — the call-tracking system we built for an IT
+          services firm went from nothing to live in two. Full builds usually run 4–12 weeks
+          depending on scope, and workshops can be scheduled within two weeks. You get a concrete
+          timeline in the proposal, not a vague range.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>What kinds of projects do you take on?</summary>
+        <p>
+          Custom applications, AI-integrated tooling, creative and interactive experiences, and
+          technical advisory. We lean toward work where craft matters — where the goal isn't just
+          "ship something that runs" but "build something people are glad exists." If you've got a
+          bold idea that's hard to hand off to a generic shop, that's usually where we fit.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>What don't you do?</summary>
+        <p>
+          We're not the right fit for everything, and we'd rather say so up front. We don't do
+          template WordPress sites, crypto or NFT projects, pure staff augmentation, or "make it
+          look like our competitor" work. If a project is really about churning out something
+          generic as cheaply as possible, there are better shops for that — and we'll happily
+          point you toward one.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>What technologies do you work with?</summary>
+        <p>
+          We're opinionated about fit, not fashion. We pick tools based on the problem, and we've
+          shipped real work in TypeScript, Python, Rust, React, Three.js / WebGL, and modern AI/ML
+          frameworks. Backend-side that usually means Node, FastAPI, Postgres, and the usual cloud
+          pieces. If something unusual fits better, we'll tell you — and if your existing stack is
+          the right call, we won't invent a reason to replace it.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>What does your AI training cover?</summary>
+        <p>
+          We build with AI every day — it's a constant collaborator in our own codebases, not a
+          side project. Workshops teach teams how to actually work with these systems the way we
+          do: not prompt tricks, but how to think about AI as a collaborator inside a real
+          workflow, where it's useful, where it quietly lies to you, and how to integrate it into
+          products without betting the company on it. Tailored to your team's current level.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>Can you work on an existing codebase?</summary>
+        <p>
+          Yes. We start with a written audit — usually a week — with an honest assessment of the
+          code, the architecture, and the specific risks we see. You can walk away with just the
+          audit if that's all you need. If you want to keep going, we build on what's there,
+          refactor a specific layer, or recommend a targeted rewrite. No false urgency to throw
+          anything away.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>Do you work with remote clients?</summary>
+        <p>
+          Yes — and for the right project, we'll embed on-site. We spent a month inside a client's
+          operation rebuilding their CRM around a new data source, and the proximity made a real
+          difference. Most work is remote, based out of Indiana with clients anywhere, using video
+          calls, shared project visibility, and async updates.
+        </p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens after a project ships?</summary>
+        <p>
+          You get clean, documented code that your team (or another team) can maintain and extend.
+          We're also happy to stay involved on a retainer, handle a defined support window, or come
+          back for future phases. The handoff is designed so you're never locked in.
+        </p>
+      </details>
+    </div>
+  </section>
 
   <!-- CTA -->
   <section id="cta">
@@ -1773,6 +2128,143 @@
           ctx.fillRect(W * 0.55, ry + 6, 40, 7);
         }
 
+      } else if (pattern === 'workflow') {
+        // Make.com-style scenario canvas: event source → router → branches
+        ctx.fillStyle = '#0f1218';
+        ctx.fillRect(0, 0, W, H);
+
+        // Subtle dot grid
+        ctx.fillStyle = 'rgba(255,255,255,0.035)';
+        for (let gx = 10; gx < W; gx += 18) {
+          for (let gy = 10; gy < H; gy += 18) {
+            ctx.fillRect(gx, gy, 1, 1);
+          }
+        }
+
+        // Node layout: source → router → 2 branches, each branch ending in 2 terminal nodes
+        const cx = {
+          src: W * 0.08,
+          parse: W * 0.25,
+          router: W * 0.42,
+          branchTop: W * 0.62,
+          branchBot: W * 0.62,
+          endTop1: W * 0.85,
+          endTop2: W * 0.85,
+          endBot1: W * 0.85,
+          endBot2: W * 0.85,
+        };
+        const cy = {
+          src: H * 0.5,
+          parse: H * 0.5,
+          router: H * 0.5,
+          branchTop: H * 0.25,
+          branchBot: H * 0.75,
+          endTop1: H * 0.12,
+          endTop2: H * 0.38,
+          endBot1: H * 0.62,
+          endBot2: H * 0.88,
+        };
+
+        // Connector helper: curved Bezier terminating at node edges, with arrowhead
+        function connect(x1, y1, r1, x2, y2, r2, active) {
+          // Horizontal approach at both ends (tangent is horizontal for this curve shape),
+          // so edge entry/exit points are a radius offset along x.
+          const sx = x1 + r1;
+          const ex = x2 - r2;
+          ctx.strokeStyle = active ? 'rgba(232,168,92,0.55)' : 'rgba(212,134,58,0.28)';
+          ctx.lineWidth = active ? 1.6 : 1.1;
+          const midX = (sx + ex) / 2;
+          ctx.beginPath();
+          ctx.moveTo(sx, y1);
+          ctx.bezierCurveTo(midX, y1, midX, y2, ex, y2);
+          ctx.stroke();
+          // Arrowhead, pointing at the circle edge
+          ctx.fillStyle = active ? 'rgba(232,168,92,0.7)' : 'rgba(212,134,58,0.4)';
+          ctx.beginPath();
+          ctx.moveTo(ex, y2);
+          ctx.lineTo(ex - 6, y2 - 3);
+          ctx.lineTo(ex - 6, y2 + 3);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // Node radii (must match the node() calls below)
+        const R = { src: 13, parse: 12, router: 13, branch: 11, end: 10 };
+
+        // Draw connectors first so nodes sit on top
+        connect(cx.src, cy.src, R.src, cx.parse, cy.parse, R.parse, true);
+        connect(cx.parse, cy.parse, R.parse, cx.router, cy.router, R.router, true);
+        connect(cx.router, cy.router, R.router, cx.branchTop, cy.branchTop, R.branch, true);
+        connect(cx.router, cy.router, R.router, cx.branchBot, cy.branchBot, R.branch, false);
+        connect(cx.branchTop, cy.branchTop, R.branch, cx.endTop1, cy.endTop1, R.end, true);
+        connect(cx.branchTop, cy.branchTop, R.branch, cx.endTop2, cy.endTop2, R.end, false);
+        connect(cx.branchBot, cy.branchBot, R.branch, cx.endBot1, cy.endBot1, R.end, false);
+        connect(cx.branchBot, cy.branchBot, R.branch, cx.endBot2, cy.endBot2, R.end, false);
+
+        // Node helper
+        function node(x, y, r, hue, glyph, pulse) {
+          // Outer halo (pulse)
+          if (pulse) {
+            const hg = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+            hg.addColorStop(0, 'rgba(232,168,92,0.28)');
+            hg.addColorStop(1, 'rgba(232,168,92,0)');
+            ctx.fillStyle = hg;
+            ctx.beginPath(); ctx.arc(x, y, r * 2.4, 0, Math.PI * 2); ctx.fill();
+          }
+          // Body
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fillStyle = hue === 'amber' ? 'rgba(212,134,58,0.22)'
+                         : hue === 'green' ? 'rgba(90,160,110,0.18)'
+                         : hue === 'blue'  ? 'rgba(110,160,212,0.18)'
+                         : 'rgba(255,255,255,0.06)';
+          ctx.fill();
+          ctx.strokeStyle = hue === 'amber' ? 'rgba(232,168,92,0.7)'
+                          : hue === 'green' ? 'rgba(140,200,150,0.55)'
+                          : hue === 'blue'  ? 'rgba(150,190,230,0.55)'
+                          : 'rgba(255,255,255,0.25)';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          // Glyph
+          ctx.fillStyle = 'rgba(255,255,255,0.78)';
+          ctx.font = `${Math.round(r * 0.95)}px "Segoe UI Symbol", "Apple Symbols", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(glyph, x, y + 1);
+        }
+
+        // Source (incoming call event — phone)
+        node(cx.src, cy.src, 13, 'amber', '📞', true);
+        // Parser (event parser — braces)
+        node(cx.parse, cy.parse, 12, 'neutral', '{}', false);
+        // Router (diamond-like, db lookup — question mark)
+        node(cx.router, cy.router, 13, 'amber', '?', false);
+        // Branch: tech lookup
+        node(cx.branchTop, cy.branchTop, 11, 'blue', '⚙', false);
+        // Branch: client lookup
+        node(cx.branchBot, cy.branchBot, 11, 'blue', '⚙', false);
+        // Terminal endpoints
+        node(cx.endTop1, cy.endTop1, 10, 'green', 'M', false); // monday.com
+        node(cx.endTop2, cy.endTop2, 10, 'neutral', '✉', false); // notify technician
+        node(cx.endBot1, cy.endBot1, 10, 'green', 'M', false); // monday.com client card
+        node(cx.endBot2, cy.endBot2, 10, 'amber', '$', false); // billing
+
+        // Small labels along top-left to hint at "scenario" UI chrome
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(12, 10, 28, 4);
+        ctx.fillStyle = 'rgba(212,134,58,0.5)';
+        ctx.fillRect(44, 10, 12, 4);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(60, 10, 20, 4);
+
+        // Status pill bottom-right (running)
+        ctx.fillStyle = 'rgba(90,160,110,0.25)';
+        ctx.fillRect(W - 54, H - 16, 42, 10);
+        ctx.fillStyle = 'rgba(140,220,160,0.8)';
+        ctx.beginPath(); ctx.arc(W - 48, H - 11, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.fillRect(W - 42, H - 13, 24, 3);
+
       } else if (pattern === 'crypt') {
         // Dungeon FPS-style preview
         ctx.fillStyle = '#080808';
@@ -1922,6 +2414,18 @@
       navigator.clipboard.writeText('317-749-7413').then(() => {
         showCopyToast('Phone number copied to clipboard');
       });
+    }
+
+    // Pricing deep-link: open the pricing FAQ when linked from nav
+    document.querySelectorAll('a[data-faq="pricing"]').forEach(link => {
+      link.addEventListener('click', () => {
+        const item = document.getElementById('faq-pricing');
+        if (item) setTimeout(() => { item.open = true; }, 50);
+      });
+    });
+    if (window.location.hash === '#pricing') {
+      const item = document.getElementById('faq-pricing');
+      if (item) { item.open = true; item.scrollIntoView({ behavior: 'smooth' }); }
     }
 
     function showCopyToast(message) {
