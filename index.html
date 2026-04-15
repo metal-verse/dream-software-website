@@ -2428,6 +2428,17 @@
       if (item) { item.open = true; item.scrollIntoView({ behavior: 'smooth' }); }
     }
 
+    // FAQ accordion — only one item open at a time
+    document.querySelectorAll('#faq .faq-item').forEach(item => {
+      item.addEventListener('toggle', () => {
+        if (item.open) {
+          document.querySelectorAll('#faq .faq-item').forEach(other => {
+            if (other !== item && other.open) other.open = false;
+          });
+        }
+      });
+    });
+
     function showCopyToast(message) {
       const toast = document.getElementById('copy-toast');
       toast.querySelector('.toast-text').textContent = message;
