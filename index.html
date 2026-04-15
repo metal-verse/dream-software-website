@@ -429,17 +429,15 @@
     }
 
     @media (max-width: 880px) {
-      section#philosophy { padding: 4rem 0; }
+      /* overflow: hidden on a sticky ancestor disables sticky entirely —
+         it must be visible on mobile so the canvas can pin to the viewport. */
+      section#philosophy { padding: 4rem 0; overflow: visible; }
       #philosophy > .section-label,
       #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
       .philosophy-grid {
         grid-template-columns: 1fr;
         gap: 2.5rem;
         padding: 0 1.5rem;
-        /* Reserve vertical space below the text so that when the canvas is
-           pinned at the viewport bottom, the last paragraph can scroll past
-           it without the next section starting too soon. */
-        padding-bottom: calc(38vh + 2rem);
       }
       .philosophy-text {
         margin: 0 auto;
@@ -447,18 +445,17 @@
       }
       .philosophy-canvas-label { text-align: center; }
 
-      /* The canvas is a fixed-position overlay on mobile. Its vertical
-         position is driven by JS (transform: translateY) so it appears to
-         slide in from below p1 in natural page flow, pins at the viewport
-         bottom while p2/p3 scroll up behind it, then rides out anchored to
-         the section's bottom. Starts fully translated off-screen below. */
+      /* The canvas is an in-flow sticky footer on mobile. It sits at the
+         natural end of the philosophy section and pins itself to the viewport
+         bottom while the section is in view, then rides out with the section
+         end. No JS, no compositor flicker — the browser handles it. */
       #philosophy-canvas {
-        position: fixed;
+        position: sticky;
         top: auto;
         inset: auto;
         bottom: 0;
-        left: 0;
-        right: 0;
+        left: auto;
+        right: auto;
         width: 100vw;
         height: 38vh;
         min-height: 260px;
@@ -466,6 +463,9 @@
         z-index: 50;
         pointer-events: none;
         display: block;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+        margin-top: 2rem;
         /* Heavy cover so text behind is immediately hidden */
         background: linear-gradient(to bottom,
           rgba(26,26,26,0) 0%,
@@ -474,12 +474,8 @@
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
         /* box-shadow extends the charcoal cover 100px below the canvas so the
-           area behind Safari's translucent URL bar is also opaque. The canvas
-           itself stays at 38vh — only the background cover extends. */
+           area behind Safari's translucent URL bar is also opaque. */
         box-shadow: 0 100px 0 0 rgb(26, 26, 26);
-        /* Off-screen below by default — JS takes over on the first scroll event */
-        transform: translate3d(0, 100%, 0);
-        will-change: transform;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -3879,24 +3875,45 @@
 
       const cityCount   = new Int32Array(CITIES.length);
 
-      // Coastline particles — reserved slice of the particle pool that outline the continents.
-      // Each has a fixed (lat, lon) pulled from the bundled Natural Earth sample points.
-      const COAST_PARTICLE_COUNT = (typeof GLOBE_COASTLINES !== 'undefined')
-        ? Math.min(Math.floor(GLOBE_COASTLINES.length / 2), Math.floor(PARTICLE_COUNT / 2))
+      // Coastline points — total sphere positions from the Natural Earth dataset.
+      // Particles are assigned to a subset and get recycled onto newly-emerging points
+      // as the globe rotates, so nothing is rendered on the back hemisphere.
+      const COAST_POINT_TOTAL = (typeof GLOBE_COASTLINES !== 'undefined')
+        ? Math.floor(GLOBE_COASTLINES.length / 2)
         : 0;
-      const coastVecX = new Float32Array(COAST_PARTICLE_COUNT);
-      const coastVecY = new Float32Array(COAST_PARTICLE_COUNT);
-      const coastVecZ = new Float32Array(COAST_PARTICLE_COUNT);
+      const COAST_PARTICLE_COUNT = Math.min(
+        Math.floor(COAST_POINT_TOTAL * 0.55),
+        Math.floor(PARTICLE_COUNT / 2)
+      );
+      const coastVecX = new Float32Array(COAST_POINT_TOTAL);
+      const coastVecY = new Float32Array(COAST_POINT_TOTAL);
+      const coastVecZ = new Float32Array(COAST_POINT_TOTAL);
+      const coastPointIdx  = new Int16Array(COAST_PARTICLE_COUNT);
+      const _pointAssigned = new Uint8Array(COAST_POINT_TOTAL);
+
       (function _initCoastPoints() {
         if (typeof GLOBE_COASTLINES === 'undefined') return;
-        for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
-          const lat = GLOBE_COASTLINES[i*2] * Math.PI / 180;
-          const lon = GLOBE_COASTLINES[i*2+1] * Math.PI / 180;
-          coastVecX[i] =  Math.cos(lat) * Math.sin(lon);
-          coastVecY[i] = -Math.sin(lat);
-          coastVecZ[i] =  Math.cos(lat) * Math.cos(lon);
+        for (let p = 0; p < COAST_POINT_TOTAL; p++) {
+          const lat = GLOBE_COASTLINES[p*2] * Math.PI / 180;
+          const lon = GLOBE_COASTLINES[p*2+1] * Math.PI / 180;
+          coastVecX[p] =  Math.cos(lat) * Math.sin(lon);
+          coastVecY[p] = -Math.sin(lat);
+          coastVecZ[p] =  Math.cos(lat) * Math.cos(lon);
         }
       })();
+
+      function _coastResetAssignments() {
+        for (let p = 0; p < COAST_POINT_TOTAL; p++) _pointAssigned[p] = 0;
+        let placed = 0, tries = 0;
+        while (placed < COAST_PARTICLE_COUNT && tries < COAST_PARTICLE_COUNT * 10) {
+          tries++;
+          const p = (Math.random() * COAST_POINT_TOTAL) | 0;
+          if (_pointAssigned[p]) continue;
+          _pointAssigned[p] = 1;
+          coastPointIdx[placed++] = p;
+        }
+      }
+      _coastResetAssignments();
 
       function _globeInitParticles() {
         // Distribute non-coastline particles across cities weighted by scale
@@ -3930,6 +3947,7 @@
       function _globeReset() {
         _globeLastFlowMs = 0;
         _globeInitParticles();
+        _coastResetAssignments();
       }
 
       function computeGlobeTargets(tMs) {
@@ -3942,18 +3960,59 @@
 
         const cosR = Math.cos(rotAngle), sinR = Math.sin(rotAngle);
 
-        // ---- Coastline particles: fixed on sphere, rotated with globe, dim fade ----
+        // ---- Coastline particles with recycle-on-rotate-away ----
+        // Each particle shows one coastline point. When a point rotates past the back
+        // edge, we release it and grab a point that's just emerging on the left edge,
+        // teleporting the particle's physical position so no visible arc crosses the globe.
+        const RECYCLE_Z_MAX     = -0.08;   // particle's current point is behind the globe by this much → recycle
+        const SPAWN_Z_MIN       = -0.04;   // new spawn point must be close to terminator or in front
+        const SPAWN_Z_MAX        =  0.25;   // but not too far into the front (reserved for stable particles)
         for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
-          const px = coastVecX[i], py = coastVecY[i], pz = coastVecZ[i];
-          const rx =  px * cosR + pz * sinR;
-          const rz = -px * sinR + pz * cosR;
-          const ry =  py;
+          let p = coastPointIdx[i];
+          let qx = coastVecX[p], qy = coastVecY[p], qz = coastVecZ[p];
+          let rx =  qx * cosR + qz * sinR;
+          let rz = -qx * sinR + qz * cosR;
+          let ry =  qy;
+
+          if (rz < RECYCLE_Z_MAX) {
+            // Release this point and try to grab a new one emerging on the left edge
+            _pointAssigned[p] = 0;
+            let found = false;
+            for (let tries = 0; tries < 14; tries++) {
+              const cand = (Math.random() * COAST_POINT_TOTAL) | 0;
+              if (_pointAssigned[cand]) continue;
+              const cx2 = coastVecX[cand], cy2 = coastVecY[cand], cz2 = coastVecZ[cand];
+              const crx =  cx2 * cosR + cz2 * sinR;
+              const crz = -cx2 * sinR + cz2 * cosR;
+              if (crx < 0 && crz >= SPAWN_Z_MIN && crz <= SPAWN_Z_MAX) {
+                p = cand;
+                _pointAssigned[p] = 1;
+                coastPointIdx[i] = p;
+                rx = crx; rz = crz; ry = cy2;
+                // Teleport particle's physical position and zero its velocity so it
+                // appears exactly at the new spawn location (no visible dash across globe)
+                const sx = ccx + rx * R;
+                const sy = ccy + ry * R;
+                px[i] = sx;
+                py[i] = sy;
+                vx[i] = 0;
+                vy[i] = 0;
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              // No suitable spawn point this frame — keep ownership of current, try again next frame
+              _pointAssigned[p] = 1;
+            }
+          }
+
           animTargets[i*2]   = ccx + rx * R;
           animTargets[i*2+1] = ccy + ry * R;
-          // Coastlines are dimmer than cities so cities stay the focal points
+
           let a;
-          if (rz > 0.08) a = 0.38;
-          else if (rz > -0.12) a = 0.38 * ((rz + 0.12) / 0.20);
+          if (rz > 0.08) a = 0.82;
+          else if (rz > -0.15) a = 0.82 * ((rz + 0.15) / 0.23);
           else a = 0;
           flowAlpha[i] = a;
         }
@@ -4266,13 +4325,21 @@
       // Word particles store a stable index into sample array (as u ∈ [0,1))
       const aliveWordU     = new Float32Array(PARTICLE_COUNT);
 
-      // Word particles: strong pull toward their designated sample of "creative",
-      // tiny bird push for liveliness noise.
-      const ALIVE_WORD_SPRING  = 14;
-      const ALIVE_WORD_DAMP    = 3.5;
+      // Word particles: gentle pull toward their designated sample of "creative",
+      // tiny bird push for liveliness, plus particle-to-particle forces so the
+      // word emerges from force equilibrium rather than snapping pixel-perfect.
+      const ALIVE_WORD_SPRING  = 4.5;   // softer pull — longer, organic convergence
+      const ALIVE_WORD_DAMP    = 2.8;
       const ALIVE_WORD_PUSH_R  = 26;
-      const ALIVE_WORD_PUSH_K  = 28;   // minimal — just enough to jitter the word
+      const ALIVE_WORD_PUSH_K  = 28;
       const ALIVE_WORD_NOISE   = 6;
+      // Particle-to-particle forces (word group only). Short-range repulsion
+      // prevents pile-up; weak mid-range attraction clumps nearby particles.
+      const ALIVE_PP_REPEL_R   = 7;
+      const ALIVE_PP_REPEL_K   = 180;
+      const ALIVE_PP_ATTRACT_R = 22;
+      const ALIVE_PP_ATTRACT_K = 6;
+      const ALIVE_PP_SAMPLES   = 3;    // random word-neighbors sampled per particle per frame
 
       // Atmosphere: pushed strongly by birds, no word attraction, damped drift.
       const ALIVE_ATMO_DAMP    = 1.4;
@@ -4351,6 +4418,13 @@
         }
       })();
 
+      // Pre-compute the list of word-particle indices for fast neighbor sampling.
+      const aliveWordIndices = [];
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        if (aliveGroup[i] === 1) aliveWordIndices.push(i);
+      }
+      const aliveWordIdxN = aliveWordIndices.length;
+
       function _aliveInit() {
         const sr = _flowSafeRegion();
         for (let b = 0; b < ALIVE_BIRDS; b++) {
@@ -4363,25 +4437,11 @@
           birdFlapHz[b] = ALIVE_FLAP_HZ_MIN + Math.random() * (ALIVE_FLAP_HZ_MAX - ALIVE_FLAP_HZ_MIN);
           birdFlapPhase[b] = Math.random() * Math.PI * 2;
         }
-        // Seed word particles near their target samples (so they converge into the word fast).
-        // Seed atmosphere across the safe region.
+        // Make sure the "creative" raster is ready for frame-1 target lookups.
+        // Particle positions are intentionally NOT touched here — word and
+        // atmosphere particles spring/integrate to their positions from
+        // wherever they happened to be in the previous shape.
         _aliveRasterizeCreative();
-        const samples = aliveAttractSamples;
-        const sampleN = samples ? samples.length / 2 : 0;
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const g = aliveGroup[i];
-          if (g === 1 && sampleN > 0) {
-            const k = Math.floor(aliveWordU[i] * sampleN);
-            px[i] = samples[k*2] + (Math.random() - 0.5) * 6;
-            py[i] = samples[k*2+1] + (Math.random() - 0.5) * 6;
-            vx[i] = 0; vy[i] = 0;
-          } else if (g === 2) {
-            px[i] = sr.l + Math.random() * sr.w;
-            py[i] = sr.t + Math.random() * sr.h;
-            vx[i] = (Math.random() - 0.5) * 40;
-            vy[i] = (Math.random() - 0.5) * 40;
-          }
-        }
         aliveInitialized = true;
       }
 
@@ -4513,6 +4573,26 @@
               const f = (1 - d / ALIVE_WORD_PUSH_R) * ALIVE_WORD_PUSH_K;
               ax += (dx / d) * f;
               ay += (dy / d) * f;
+            }
+            // Particle-to-particle: sample a handful of other word particles
+            // — short-range repulsion + weak mid-range attraction so the word
+            // settles via force balance rather than pixel-perfect placement.
+            for (let s = 0; s < ALIVE_PP_SAMPLES && aliveWordIdxN > 1; s++) {
+              const j = aliveWordIndices[Math.floor(Math.random() * aliveWordIdxN)];
+              if (j === i) continue;
+              const dxp = px[i] - px[j];
+              const dyp = py[i] - py[j];
+              const dp2 = dxp * dxp + dyp * dyp;
+              if (dp2 > ALIVE_PP_ATTRACT_R * ALIVE_PP_ATTRACT_R) continue;
+              const dp = Math.sqrt(dp2) || 0.001;
+              if (dp < ALIVE_PP_REPEL_R) {
+                const f = (1 - dp / ALIVE_PP_REPEL_R) * ALIVE_PP_REPEL_K;
+                ax += (dxp / dp) * f;
+                ay += (dyp / dp) * f;
+              } else {
+                ax -= (dxp / dp) * ALIVE_PP_ATTRACT_K;
+                ay -= (dyp / dp) * ALIVE_PP_ATTRACT_K;
+              }
             }
             ax += (Math.random() - 0.5) * ALIVE_WORD_NOISE;
             ay += (Math.random() - 0.5) * ALIVE_WORD_NOISE;
@@ -4887,6 +4967,13 @@
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         if (word === 'ALIVE') aliveInitialized = false;
         if (word === 'FORGED') forgedInitialized = false;
+        if (word === 'FLOW') {
+          // Prevent the wrap-teleport from firing on frame 1 (which would snap
+          // all packets onto their source nodes). Setting prev to 0 ensures
+          // the phFrac < prev check is false; packets spring into place from
+          // wherever they were in the previous shape.
+          for (let s = 0; s < FLOW_SQUADS; s++) flowSquadPrev[s] = 0;
+        }
         const label = document.getElementById('phil-shape-name');
         const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', GLOBE: 'cities' };
         if (label) label.textContent = labelMap[word] || word;
@@ -5031,134 +5118,22 @@
         });
       });
 
-      // --- Mobile: canvas is a fixed viewport-bottom overlay whose vertical
-      //     position is driven by scroll. It slides up from below as the user
-      //     reads past p1, pins at viewport bottom while p2/p3 scroll up
-      //     behind it, and anchors to the section bottom at the section's end
-      //     (so it rides out naturally with no visual jump). Desktop is
-      //     untouched — the CSS keeps canvas absolute full-bleed behind the
-      //     grid and this JS short-circuits when the breakpoint doesn't match.
-      const philSection = document.getElementById('philosophy');
-      const philText = document.querySelector('.philosophy-text');
-      const firstPara = philText ? philText.querySelector(':scope > p:first-of-type') : null;
+      // Canvas positioning is pure CSS (position: absolute full-bleed on
+      // desktop, position: sticky pinned to viewport bottom on mobile).
+      // Width-gated resize keeps the WebGL context from rebuilding on mobile
+      // Safari URL-bar show/hide scroll events.
       const mqlPhil = window.matchMedia('(max-width: 880px)');
-
-      let _scrollRaf = 0;
-      let _lastAppliedOffset = NaN;
-      // ──────────────────────────────────────────────────────────────────
-      // Scroll-range state machine for the mobile philosophy footer.
-      //
-      // The canvas's visible Y position is a piecewise-linear function of
-      // window.scrollY. Rather than reading getBoundingClientRect on every
-      // scroll tick (forces a synchronous layout and is the main contributor
-      // to iOS Safari scroll-time jitter), we precompute the page-coordinate
-      // thresholds ONCE at load / on real layout events, and then during
-      // scroll just do a few arithmetic comparisons on window.scrollY.
-      //
-      // Phases, defined in page coordinates (Y = absolute distance from
-      // document top):
-      //   HIDDEN-BELOW : scrollY < flowStartY
-      //                  → canvas parked off-screen below viewport
-      //   FLOW         : flowStartY ≤ scrollY < flowEndY
-      //                  → canvas follows p1 upward as user scrolls
-      //   PINNED       : flowEndY ≤ scrollY < pinEndY
-      //                  → canvas locked at viewport bottom (no change)
-      //   ANCHOR       : pinEndY ≤ scrollY < anchorEndY
-      //                  → canvas rides out with the section end
-      //   HIDDEN-ABOVE : scrollY ≥ anchorEndY
-      //                  → canvas parked off-screen above viewport
-      //
-      // Thresholds derived once:
-      //   flowStartY  = p1BottomPage + 16 - vh
-      //   flowEndY    = p1BottomPage + 16 + canvasH - vh
-      //   pinEndY     = sectionBottomPage - vh
-      //   anchorEndY  = sectionBottomPage
-      // ──────────────────────────────────────────────────────────────────
-      let _state = null;
-      function computeScrollState() {
-        if (!mqlPhil.matches || !firstPara || !philSection) {
-          _state = null;
-          return;
-        }
-        const vh = window.innerHeight;
-        const canvasH = canvas.offsetHeight;
-        const scrollY = window.scrollY || window.pageYOffset;
-        const p1Rect = firstPara.getBoundingClientRect();
-        const sRect  = philSection.getBoundingClientRect();
-        const p1BottomPage = p1Rect.bottom + scrollY;
-        const sectionBottomPage = sRect.bottom + scrollY;
-        _state = {
-          vh, canvasH,
-          flowStartY: p1BottomPage + 16 - vh,
-          flowEndY:   p1BottomPage + 16 + canvasH - vh,
-          pinEndY:    sectionBottomPage - vh,
-          anchorEndY: sectionBottomPage,
-          // For interpolation inside FLOW / ANCHOR phases:
-          p1BottomPage,
-          sectionBottomPage,
-        };
-      }
-
-      function syncCanvasPos() {
-        _scrollRaf = 0;
-        if (!_state) {
-          canvas.style.transform = '';
-          _lastAppliedOffset = NaN;
-          return;
-        }
-        const y = window.scrollY || window.pageYOffset;
-        const s = _state;
-        let offset;
-        if (y < s.flowStartY) {
-          offset = s.canvasH;                              // HIDDEN BELOW
-        } else if (y < s.flowEndY) {
-          offset = s.p1BottomPage + 16 - y - s.vh + s.canvasH; // FLOW
-        } else if (y < s.pinEndY) {
-          offset = 0;                                      // PINNED
-        } else if (y < s.anchorEndY) {
-          offset = s.sectionBottomPage - y - s.vh;         // ANCHOR
-        } else {
-          offset = -s.canvasH;                             // HIDDEN ABOVE
-        }
-        offset = Math.round(offset);
-        if (offset !== _lastAppliedOffset) {
-          canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
-          _lastAppliedOffset = offset;
-        }
-      }
-      function scheduleSync() {
-        if (_scrollRaf) return;
-        _scrollRaf = requestAnimationFrame(syncCanvasPos);
-      }
-
-      // ──────────────────────────────────────────────────────────────────
-      // Event wiring. Scroll is the only per-frame driver. Width-gated
-      // resize and orientationchange recompute the precomputed thresholds
-      // and rebuild the WebGL shape (on desktop / on orientation change).
-      // Mobile spurious window.resize events (URL-bar artifacts) do
-      // nothing because the width check rejects them.
-      // ──────────────────────────────────────────────────────────────────
       let _lastW = window.innerWidth;
-      window.addEventListener('scroll', scheduleSync, { passive: true });
       window.addEventListener('resize', () => {
         const w = window.innerWidth;
-        if (Math.abs(w - _lastW) < 2) return; // spurious (URL-bar etc.)
+        if (Math.abs(w - _lastW) < 2) return;
         _lastW = w;
-        if (!mqlPhil.matches) resize(); // WebGL rebuild only on desktop resize
-        computeScrollState();
-        scheduleSync();
+        resize();
       });
       window.addEventListener('orientationchange', () => {
-        setTimeout(() => { resize(); computeScrollState(); scheduleSync(); }, 180);
+        setTimeout(resize, 180);
       });
-      mqlPhil.addEventListener('change', () => {
-        resize();
-        computeScrollState();
-        scheduleSync();
-      });
-      // Compute initial state after layout has settled.
-      requestAnimationFrame(() => { computeScrollState(); syncCanvasPos(); });
-
+      mqlPhil.addEventListener('change', resize);
       // --- init ---
       // (The extra window.addEventListener('resize', resize) that used to
       //  live here was a duplicate of the listener above — removed so we
