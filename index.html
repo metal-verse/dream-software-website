@@ -337,10 +337,14 @@
 
     @media (max-width: 880px) {
       section#philosophy {
-        padding: 4rem 0 0;
+        padding: 4rem 0;
         /* Allow sticky children to escape past the section box. */
         overflow: visible;
       }
+      /* .philosophy-text needs a positioned containing block so its child
+         canvas's sticky positioning resolves cleanly against it and the
+         scrolling viewport. */
+      .philosophy-text { position: relative; }
       #philosophy > .section-label,
       #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
       .philosophy-grid {
@@ -360,33 +364,35 @@
          sticks to the viewport bottom while the section is scrolling past.
          When the section's end catches up, the canvas un-sticks and scrolls
          out with the section. */
+      /* JS relocates the canvas into .philosophy-text right after the first
+         paragraph on mobile. It flows in naturally, reveals as the user
+         scrolls, and sticky-pins to the viewport bottom once fully in view
+         so p2/p3 scroll up above it. Unsticks at section end. */
       #philosophy-canvas {
         position: sticky;
         top: auto;
         inset: auto;
-        left: 0;
-        right: 0;
         bottom: 0;
         display: block;
-        width: 100%;
-        height: 36vh;
-        min-height: 240px;
-        max-height: 420px;
+        /* Full-bleed out of the padded text container */
+        width: 100vw;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+        margin-top: 1.75rem;
+        margin-bottom: 2rem;
+        height: 38vh;
+        min-height: 260px;
+        max-height: 440px;
         z-index: 2;
         pointer-events: none;
-        /* Heavy cover: text fades out within the top ~12% of the footer
-           and is fully hidden beneath that. */
         background: linear-gradient(to bottom,
           rgba(26,26,26,0) 0%,
           rgba(26,26,26,0.95) 12%,
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        /* Fade in only once the user has scrolled a bit into the section */
-        opacity: 0;
-        transition: opacity 0.35s ease;
+        border-bottom: 1px solid rgba(212, 134, 58, 0.25);
       }
-      #philosophy-canvas.visible { opacity: 1; }
 
       /* Make highlighted words clearly tappable on touch */
       .phrase-trigger {
@@ -3007,16 +3013,22 @@
       const col = new Float32Array(PARTICLE_COUNT * 3);
       let targets = null;
 
-      // init: random scattered positions (seed in a rough disc so first convergence looks intentional)
+      // init: velocity + color only; positions are seeded after resize() once bounds are valid
       for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const r = Math.sqrt(Math.random()) * 220;
-        px[i] = 220 + Math.cos(a) * r;
-        py[i] = 220 + Math.sin(a) * r;
         vx[i] = (Math.random() - 0.5) * 40;
         vy[i] = (Math.random() - 0.5) * 40;
         const c = COLORS[i % COLORS.length];
         col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
+      }
+      function seedParticlePositions() {
+        // Uniform random across the word-renderable area
+        const l = shapeLeftPx, r = shapeRightPx;
+        const t = H * 0.15, b = H * 0.85;
+        const w = Math.max(1, r - l), h = Math.max(1, b - t);
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          px[i] = l + Math.random() * w;
+          py[i] = t + Math.random() * h;
+        }
       }
       let burstUntil = 0; // timestamp (ms) — no attractor force before this time
 
@@ -3132,14 +3144,18 @@
             const p = filled[k % filled.length];
             swatchTargetsRaster[k*2] = p[0];
             swatchTargetsRaster[k*2+1] = p[1];
-            // Diagonal ordering: 0 at bottom-left, 1 at top-right
+            // Line-based ordering: brush sweeps top line L→R, then bottom line L→R
             const xFrac = (p[0] - l) / rw;
             const yFrac = (p[1] - t) / rh;
-            const diag = (xFrac + (1 - yFrac)) * 0.5;
-            const jitter = (rnd() - 0.5) * 0.14; // some jitter so order isn't a hard wave
-            const po = Math.max(0, Math.min(1, diag + jitter));
+            const isTop = yFrac < 0.5;
+            const jitter = (rnd() - 0.5) * 0.05; // small x-direction jitter so reveal isn't a perfect wall
+            const xJ = Math.max(0, Math.min(1, xFrac + jitter));
+            // Paint: top line in [0, 0.5], bottom line in [0.5, 1]
+            const po = isTop ? (xJ * 0.5) : (0.5 + xJ * 0.5);
+            // Pickup: bottom line first (R→L) in [0, 0.5], top line (R→L) in [0.5, 1]
+            const uo = isTop ? (0.5 + (1 - xJ) * 0.5) : ((1 - xJ) * 0.5);
             swatchPaintOrder[k]  = po;
-            swatchPickupOrder[k] = 1 - po; // pickup starts from TR (near rest), ends at BL
+            swatchPickupOrder[k] = uo;
           }
         }
         swatchRasterBounds = { l, r, t, b };
@@ -3532,28 +3548,37 @@
         });
       });
 
-      // --- Reveal the sticky footer only after the user has scrolled past
-      //     the first paragraph on mobile. Keep it visible while the section
-      //     is in view; sticky handles the anchoring at the section's end. ---
-      const firstPara = document.querySelector('.philosophy-text > p:first-of-type');
+      // --- Mobile: relocate the canvas to sit right after the first paragraph
+      //     inside .philosophy-text. The canvas is sticky-bottom:0 on mobile
+      //     so it flows in naturally, pins to viewport bottom once fully in
+      //     view, then unsticks at the section's end. On desktop it goes back
+      //     to being a section-level absolute full-bleed canvas. ---
+      const philSection = document.getElementById('philosophy');
+      const philText = document.querySelector('.philosophy-text');
+      const firstPara = philText ? philText.querySelector(':scope > p:first-of-type') : null;
       const mqlPhil = window.matchMedia('(max-width: 880px)');
-      function syncCanvasVisibility() {
-        if (!firstPara) return;
-        if (!mqlPhil.matches) { canvas.classList.remove('visible'); return; }
-        const rect = firstPara.getBoundingClientRect();
-        // Reveal once the first paragraph's bottom has crossed ~55% of the viewport
-        // (i.e., the user is clearly reading past it)
-        const passed = rect.bottom < window.innerHeight * 0.55;
-        canvas.classList.toggle('visible', passed);
+      let canvasHome = canvas.parentElement; // remember desktop home
+      function placeCanvas() {
+        if (!canvas || !philSection) return;
+        if (mqlPhil.matches && philText && firstPara) {
+          if (firstPara.nextElementSibling !== canvas) {
+            firstPara.after(canvas);
+          }
+        } else {
+          if (canvas.parentElement !== canvasHome) {
+            canvasHome.appendChild(canvas);
+          }
+        }
+        // Container size changed — re-run the WebGL resize so particles match
+        if (typeof resize === 'function') resize();
       }
-      window.addEventListener('scroll', syncCanvasVisibility, { passive: true });
-      window.addEventListener('resize', syncCanvasVisibility);
-      mqlPhil.addEventListener('change', syncCanvasVisibility);
-      syncCanvasVisibility();
+      placeCanvas();
+      mqlPhil.addEventListener('change', placeCanvas);
 
       // --- init ---
       window.addEventListener('resize', resize);
       resize();
+      seedParticlePositions();
       rebuildShape(currentShape);
       // Pause when tab hidden to save CPU
       document.addEventListener('visibilitychange', () => {
