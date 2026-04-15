@@ -456,13 +456,17 @@
         position: fixed;
         top: auto;
         inset: auto;
-        bottom: 0;
+        /* Extend the canvas ~90px below the visual viewport bottom so it
+           covers the area behind Safari's translucent URL bar (text was
+           showing through the sides of the URL pill). The extra bleed is
+           below the viewport — only visible where the URL bar overlaps. */
+        bottom: -90px;
         left: 0;
         right: 0;
         width: 100vw;
-        height: 38vh;
-        min-height: 260px;
-        max-height: 440px;
+        height: calc(38vh + 90px);
+        min-height: 350px;
+        max-height: 530px;
         z-index: 50;
         pointer-events: none;
         display: block;
@@ -2071,6 +2075,9 @@
       &copy; 2025 Dream Software Solutions LLC. All rights reserved.
     </div>
   </footer>
+
+  <!-- ===== ARTWORK BITMAPS (used by the philosophy "moves people" animation) ===== -->
+  <script src="assets/artwork-bitmaps.js"></script>
 
   <!-- ===== VORONOI PARTICLE SIMULATION ===== -->
   <script>
@@ -3731,206 +3738,16 @@
         };
       }
 
-      // ===== ARTWORKS — iconic artwork silhouette coalescence =====
-      // Particles coalesce into one of several iconic artwork silhouettes for a few seconds,
-      // then dissolve and reform as the next. Random starting artwork; then cycles in order.
+      // ===== ARTWORKS — iconic artwork coalescence (weighted by bitmap intensity) =====
+      // Particles coalesce into iconic artwork pixel distributions loaded from the bundled
+      // bitmap file. Dark pixels of the source painting attract more particles, producing a
+      // tonal reconstruction rather than a silhouette. Artworks cycle every few seconds.
       const ARTWORK_HOLD_MS = 4500;
-
-      function _artDrawSpiral(ctx, cx, cy, maxR, turns) {
-        ctx.beginPath();
-        const steps = Math.max(40, Math.floor(turns * 40));
-        const maxT = turns * Math.PI * 2;
-        for (let i = 0; i <= steps; i++) {
-          const t = (i / steps) * maxT;
-          const r = (i / steps) * maxR;
-          const x = cx + Math.cos(t) * r;
-          const y = cy + Math.sin(t) * r;
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-
       const ARTWORKS = [
-        {
-          // Hokusai's Great Wave — crest + foam fingers + small Mt Fuji
-          name: 'wave',
-          draw(ctx, w, h) {
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.moveTo(0, h * 0.85);
-            ctx.bezierCurveTo(w * 0.12, h * 0.80, w * 0.28, h * 0.55, w * 0.42, h * 0.38);
-            ctx.bezierCurveTo(w * 0.52, h * 0.28, w * 0.62, h * 0.20, w * 0.72, h * 0.26);
-            ctx.bezierCurveTo(w * 0.76, h * 0.32, w * 0.72, h * 0.42, w * 0.64, h * 0.44);
-            ctx.bezierCurveTo(w * 0.60, h * 0.44, w * 0.58, h * 0.41, w * 0.60, h * 0.38);
-            ctx.lineTo(w * 0.60, h * 0.85);
-            ctx.lineTo(0, h * 0.85);
-            ctx.closePath();
-            ctx.fill();
-            const foamX = [0.50, 0.56, 0.63, 0.70];
-            for (let i = 0; i < foamX.length; i++) {
-              ctx.beginPath();
-              ctx.arc(w * foamX[i], h * 0.20, w * 0.022, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.beginPath();
-              ctx.arc(w * foamX[i] - w * 0.015, h * 0.16, w * 0.013, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.beginPath();
-            ctx.moveTo(w * 0.82, h * 0.48);
-            ctx.lineTo(w * 0.94, h * 0.68);
-            ctx.lineTo(w * 0.70, h * 0.68);
-            ctx.closePath();
-            ctx.fill();
-          }
-        },
-        {
-          // Van Gogh's Starry Night — sky swirls + cypress silhouette
-          name: 'starry-night',
-          draw(ctx, w, h) {
-            ctx.strokeStyle = '#fff';
-            ctx.fillStyle = '#fff';
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.lineWidth = Math.max(3, Math.min(w, h) * 0.013);
-            _artDrawSpiral(ctx, w * 0.55, h * 0.38, Math.min(w, h) * 0.22, 3.2);
-            _artDrawSpiral(ctx, w * 0.22, h * 0.32, Math.min(w, h) * 0.10, 2.5);
-            _artDrawSpiral(ctx, w * 0.82, h * 0.55, Math.min(w, h) * 0.11, 2.8);
-            ctx.beginPath();
-            ctx.moveTo(w * 0.06, h);
-            ctx.bezierCurveTo(w * 0.03, h * 0.6, w * 0.04, h * 0.3, w * 0.09, h * 0.04);
-            ctx.bezierCurveTo(w * 0.14, h * 0.3, w * 0.15, h * 0.6, w * 0.12, h);
-            ctx.closePath();
-            ctx.fill();
-          }
-        },
-        {
-          // Munch's The Scream — figure silhouette with hollow mouth & eyes
-          name: 'scream',
-          draw(ctx, w, h) {
-            ctx.fillStyle = '#fff';
-            const cx = w * 0.5;
-            ctx.beginPath();
-            ctx.ellipse(cx, h * 0.27, w * 0.11, h * 0.16, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(cx - w * 0.09, h * 0.41);
-            ctx.bezierCurveTo(cx - w * 0.14, h * 0.55, cx - w * 0.22, h * 0.80, cx - w * 0.24, h);
-            ctx.lineTo(cx + w * 0.24, h);
-            ctx.bezierCurveTo(cx + w * 0.22, h * 0.80, cx + w * 0.14, h * 0.55, cx + w * 0.09, h * 0.41);
-            ctx.bezierCurveTo(cx + w * 0.06, h * 0.39, cx - w * 0.06, h * 0.39, cx - w * 0.09, h * 0.41);
-            ctx.closePath();
-            ctx.fill();
-            ctx.lineWidth = w * 0.05;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#fff';
-            ctx.beginPath();
-            ctx.moveTo(cx - w * 0.14, h * 0.52);
-            ctx.quadraticCurveTo(cx - w * 0.18, h * 0.40, cx - w * 0.10, h * 0.27);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(cx + w * 0.14, h * 0.52);
-            ctx.quadraticCurveTo(cx + w * 0.18, h * 0.40, cx + w * 0.10, h * 0.27);
-            ctx.stroke();
-            // Carve hollow mouth and eyes
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.beginPath();
-            ctx.ellipse(cx, h * 0.33, w * 0.025, h * 0.04, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(cx - w * 0.035, h * 0.22, w * 0.014, h * 0.02, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(cx + w * 0.035, h * 0.22, w * 0.014, h * 0.02, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalCompositeOperation = 'source-over';
-          }
-        },
-        {
-          // Da Vinci's Vitruvian Man — circle + square + figure with 4 arms & 4 legs
-          name: 'vitruvian',
-          draw(ctx, w, h) {
-            ctx.strokeStyle = '#fff';
-            ctx.fillStyle = '#fff';
-            ctx.lineCap = 'round';
-            ctx.lineWidth = Math.max(2, Math.min(w, h) * 0.008);
-            const cx = w * 0.5, cy = h * 0.52;
-            const r = Math.min(w, h) * 0.38;
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.strokeRect(cx - r * 0.92, cy - r * 0.92, r * 1.84, r * 1.84);
-            ctx.beginPath();
-            ctx.arc(cx, cy - r * 0.72, r * 0.12, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(cx, cy - r * 0.60);
-            ctx.lineTo(cx, cy + r * 0.22);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(cx - r * 0.92, cy - r * 0.20);
-            ctx.lineTo(cx + r * 0.92, cy - r * 0.20);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(cx - r * 0.05, cy - r * 0.20);
-            ctx.lineTo(cx - r * 0.70, cy - r * 0.58);
-            ctx.moveTo(cx + r * 0.05, cy - r * 0.20);
-            ctx.lineTo(cx + r * 0.70, cy - r * 0.58);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(cx, cy + r * 0.22);
-            ctx.lineTo(cx - r * 0.08, cy + r * 0.92);
-            ctx.moveTo(cx, cy + r * 0.22);
-            ctx.lineTo(cx + r * 0.08, cy + r * 0.92);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(cx, cy + r * 0.22);
-            ctx.lineTo(cx - r * 0.42, cy + r * 0.88);
-            ctx.moveTo(cx, cy + r * 0.22);
-            ctx.lineTo(cx + r * 0.42, cy + r * 0.88);
-            ctx.stroke();
-          }
-        },
-        {
-          // Dalí's Persistence of Memory — clock drooping off an edge
-          name: 'melting-clock',
-          draw(ctx, w, h) {
-            ctx.strokeStyle = '#fff';
-            ctx.fillStyle = '#fff';
-            ctx.lineCap = 'round';
-            ctx.lineWidth = Math.max(2, Math.min(w, h) * 0.010);
-            const cx = w * 0.42, cy = h * 0.42;
-            const r = Math.min(w, h) * 0.23;
-            ctx.beginPath();
-            ctx.moveTo(cx - r, cy);
-            ctx.bezierCurveTo(cx - r, cy - r * 1.1, cx + r * 0.5, cy - r * 1.15, cx + r * 1.05, cy - r * 0.3);
-            ctx.bezierCurveTo(cx + r * 1.5, cy + r * 0.4, cx + r * 1.8, cy + r * 1.4, cx + r * 1.3, cy + r * 2.0);
-            ctx.bezierCurveTo(cx + r * 1.15, cy + r * 1.7, cx + r * 1.0, cy + r * 1.2, cx + r * 0.7, cy + r * 0.85);
-            ctx.bezierCurveTo(cx + r * 0.2, cy + r * 0.95, cx - r * 0.7, cy + r * 0.8, cx - r, cy);
-            ctx.closePath();
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(cx, cy, r * 0.08, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + r * 0.55, cy - r * 0.18);
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + r * 0.08, cy - r * 0.65);
-            ctx.stroke();
-            for (let i = 0; i < 12; i++) {
-              const ang = i / 12 * Math.PI * 2 - Math.PI / 2;
-              if (ang > Math.PI * 0.15 && ang < Math.PI * 0.65) continue;
-              const x1 = cx + Math.cos(ang) * (r * 0.78);
-              const y1 = cy + Math.sin(ang) * (r * 0.78);
-              const x2 = cx + Math.cos(ang) * (r * 0.92);
-              const y2 = cy + Math.sin(ang) * (r * 0.92);
-              ctx.beginPath();
-              ctx.moveTo(x1, y1);
-              ctx.lineTo(x2, y2);
-              ctx.stroke();
-            }
-          }
-        },
+        { key: 'wave',         label: 'Hokusai — Great Wave' },
+        { key: 'starry-night', label: 'Van Gogh — Starry Night' },
+        { key: 'scream',       label: 'Munch — The Scream' },
+        { key: 'vitruvian',    label: 'Da Vinci — Vitruvian Man' },
       ];
 
       let artworkIdx = Math.floor(Math.random() * ARTWORKS.length);
@@ -3939,24 +3756,23 @@
       let artworkStartMs = 0;
       const artworkTargets = new Float32Array(PARTICLE_COUNT * 2);
 
+      const _artworkDecodedBitmaps = {}; // key -> Uint8Array
+      function _getArtworkBitmap(key) {
+        if (_artworkDecodedBitmaps[key]) return _artworkDecodedBitmaps[key];
+        const b64 = (typeof ARTWORK_BITMAPS !== 'undefined') ? ARTWORK_BITMAPS[key] : null;
+        if (!b64) return null;
+        const bin = atob(b64);
+        const u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        _artworkDecodedBitmaps[key] = u;
+        return u;
+      }
+
       function _rasterizeArtwork(idx) {
         const sr = _flowSafeRegion();
-        const w = Math.max(80, Math.round(sr.w));
-        const h = Math.max(80, Math.round(sr.h));
-        const off = document.createElement('canvas');
-        off.width = w; off.height = h;
-        const ctx = off.getContext('2d');
-        ctx.clearRect(0, 0, w, h);
-        ARTWORKS[idx].draw(ctx, w, h);
-        const img = ctx.getImageData(0, 0, w, h).data;
-        const filled = [];
-        for (let y = 0; y < h; y++) {
-          const rowBase = y * w;
-          for (let x = 0; x < w; x++) {
-            if (img[(rowBase + x) * 4 + 3] > 96) filled.push([sr.l + x, sr.t + y]);
-          }
-        }
-        if (filled.length === 0) {
+        const bm = _getArtworkBitmap(ARTWORKS[idx].key);
+        if (!bm || typeof ARTWORK_BITMAP_W === 'undefined') {
+          // Fallback: cluster at the safe-region center if the bitmap file didn't load
           const cx = sr.l + sr.w / 2, cy = sr.t + sr.h / 2;
           for (let i = 0; i < PARTICLE_COUNT; i++) {
             artworkTargets[i*2]   = cx;
@@ -3964,16 +3780,56 @@
           }
           return;
         }
-        let seed = (idx * 2654435761) ^ filled.length ^ (w * 7919);
-        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
-        for (let i = filled.length - 1; i > 0; i--) {
-          const j = Math.floor(rnd() * (i + 1));
-          const tmp = filled[i]; filled[i] = filled[j]; filled[j] = tmp;
+        const bw = ARTWORK_BITMAP_W, bh = ARTWORK_BITMAP_H;
+        const total = bw * bh;
+
+        // Build a cumulative distribution over pixel intensities so we can sample
+        // pixels with probability proportional to their weight (dark = heavier).
+        // Add a small constant floor so very-light pixels still occasionally get a particle.
+        const FLOOR = 4;
+        let sum = 0;
+        const cdf = new Uint32Array(total);
+        for (let i = 0; i < total; i++) {
+          sum += (bm[i] + FLOOR);
+          cdf[i] = sum;
         }
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const p = filled[i % filled.length];
-          artworkTargets[i*2]   = p[0];
-          artworkTargets[i*2+1] = p[1];
+        if (sum === 0) {
+          const cx = sr.l + sr.w / 2, cy = sr.t + sr.h / 2;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            artworkTargets[i*2]   = cx;
+            artworkTargets[i*2+1] = cy;
+          }
+          return;
+        }
+
+        // Map bitmap → safe-region canvas coords, preserving aspect ratio and centering.
+        const scale = Math.min(sr.w / bw, sr.h / bh);
+        const dispW = bw * scale;
+        const dispH = bh * scale;
+        const offsetX = sr.l + (sr.w - dispW) / 2;
+        const offsetY = sr.t + (sr.h - dispH) / 2;
+
+        // Deterministic PRNG for stable particle-to-pixel mapping per artwork
+        let seed = (idx * 2654435761) ^ sum ^ (bw * 7919);
+        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
+
+        for (let k = 0; k < PARTICLE_COUNT; k++) {
+          // Weighted pixel pick: uniform sample into the CDF, binary search the pixel.
+          const r = rnd() * sum;
+          let lo = 0, hi = total - 1;
+          while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (cdf[mid] < r) lo = mid + 1;
+            else hi = mid;
+          }
+          const pi = lo;
+          const pyPx = (pi / bw) | 0;
+          const pxPx = pi - pyPx * bw;
+          // Sub-pixel jitter so the particle cloud doesn't snap to a lattice
+          const jx = (rnd() - 0.5) * scale * 0.95;
+          const jy = (rnd() - 0.5) * scale * 0.95;
+          artworkTargets[k*2]     = offsetX + (pxPx + 0.5) * scale + jx;
+          artworkTargets[k*2 + 1] = offsetY + (pyPx + 0.5) * scale + jy;
         }
       }
 
@@ -4576,23 +4432,68 @@
         return filled;
       }
 
-      // Fire simulation — particles rise from a wide base, tapering toward
-      // the center as they ascend. Each has its own lifetime; on expiry or
-      // drifting above the flame top, the particle respawns at the base.
-      const fireAge    = new Float32Array(PARTICLE_COUNT);
-      const fireMaxAge = new Float32Array(PARTICLE_COUNT);
-      let fireBaseCx = 0, fireBaseY = 0, fireBaseHalfW = 0, fireTopY = 0;
+      // Fire simulation — multiple flame LICKS arrayed along the base, each
+      // with its own height, width, sway, and intensity. Particles are
+      // permanently assigned to a lick; on respawn they return to their
+      // lick's base. Each lick's centerline sways horizontally at the top
+      // (stationary at the base), giving the characteristic waving motion.
+      const FIRE_LICKS = 7;
+      const fireAge       = new Float32Array(PARTICLE_COUNT);
+      const fireMaxAge    = new Float32Array(PARTICLE_COUNT);
+      const particleLick  = new Int8Array(PARTICLE_COUNT);
+      const lickBaseX     = new Float32Array(FIRE_LICKS);
+      const lickBaseHalfW = new Float32Array(FIRE_LICKS);
+      const lickTopY      = new Float32Array(FIRE_LICKS);
+      const lickSwayAmp   = new Float32Array(FIRE_LICKS);
+      const lickSwayFreq  = new Float32Array(FIRE_LICKS);
+      const lickSwayPhase = new Float32Array(FIRE_LICKS);
+      const lickIntensity = new Float32Array(FIRE_LICKS);
+      let fireBaseY = 0;
+
+      function _firePrepareLicks(sr) {
+        const spread = sr.w * 0.58;
+        const startX = sr.l + (sr.w - spread) * 0.5;
+        const lickStep = spread / Math.max(1, FIRE_LICKS - 1);
+        for (let k = 0; k < FIRE_LICKS; k++) {
+          const u = FIRE_LICKS === 1 ? 0.5 : k / (FIRE_LICKS - 1);
+          // Position with small jitter so licks aren't mechanically uniform.
+          lickBaseX[k]     = startX + u * spread + (Math.random() - 0.5) * lickStep * 0.35;
+          lickBaseHalfW[k] = sr.w * (0.018 + Math.random() * 0.022);
+          // Variable heights — some short flickers, some tall licks.
+          lickTopY[k]      = sr.t + sr.h * (0.08 + Math.random() * 0.40);
+          lickSwayAmp[k]   = sr.w * (0.022 + Math.random() * 0.055);
+          lickSwayFreq[k]  = 0.5 + Math.random() * 1.3;   // Hz
+          lickSwayPhase[k] = Math.random() * Math.PI * 2;
+          lickIntensity[k] = 0.7 + Math.random() * 0.6;
+        }
+        // Particle assignment — weighted by lick volume (height × intensity)
+        // so taller, more intense licks get more particles naturally.
+        const cumulative = new Float32Array(FIRE_LICKS);
+        let total = 0;
+        for (let k = 0; k < FIRE_LICKS; k++) {
+          const reach = (sr.t + sr.h * 0.88) - lickTopY[k];
+          total += Math.max(1, reach) * lickIntensity[k];
+          cumulative[k] = total;
+        }
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const r = Math.random() * total;
+          let k = 0;
+          while (k < FIRE_LICKS - 1 && cumulative[k] < r) k++;
+          particleLick[i] = k;
+        }
+      }
 
       function _fireRespawn(i) {
-        // Center-biased distribution along base (denser core, thinner edges)
+        const k = particleLick[i];
+        // Center-biased along lick base — denser core, thinner edges.
         const u = Math.random() * 2 - 1;
         const bias = Math.sign(u) * (1 - Math.pow(1 - Math.abs(u), 1.6));
-        px[i] = fireBaseCx + bias * fireBaseHalfW;
+        px[i] = lickBaseX[k] + bias * lickBaseHalfW[k];
         py[i] = fireBaseY + (Math.random() - 0.5) * 6;
-        vx[i] = (Math.random() - 0.5) * 50;
-        vy[i] = -(80 + Math.random() * 140);
+        vx[i] = (Math.random() - 0.5) * 40;
+        vy[i] = -(60 + Math.random() * 130) * lickIntensity[k];
         fireAge[i]    = 0;
-        fireMaxAge[i] = 900 + Math.random() * 1400;
+        fireMaxAge[i] = 700 + Math.random() * 1500;
       }
 
       function _forgedInit() {
@@ -4601,17 +4502,15 @@
         if (forgedInitialized && key === forgedBoundsKey) return;
         forgedBoundsKey = key;
 
-        fireBaseCx    = sr.l + sr.w * 0.5;
-        fireBaseY     = sr.t + sr.h * 0.88;
-        fireBaseHalfW = sr.w * 0.22;
-        fireTopY      = sr.t + sr.h * 0.12;
+        fireBaseY = sr.t + sr.h * 0.88;
+        _firePrepareLicks(sr);
 
-        // Scatter initial state — stagger ages and pre-rise some particles
-        // so the flame is already in full bloom on the first frame.
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           _fireRespawn(i);
           fireAge[i] = Math.random() * fireMaxAge[i];
-          py[i] -= Math.random() * (fireBaseY - fireTopY);
+          // Pre-rise some particles so the flames are in full bloom frame 1
+          const k = particleLick[i];
+          py[i] -= Math.random() * (fireBaseY - lickTopY[k]);
         }
         forgedInitialized = true;
       }
@@ -4733,21 +4632,34 @@
       function computeForgedTargets(tMs, dt) {
         _forgedInit();
 
-        const BUOYANCY    = 380;   // upward acceleration (px/s²), fades near top
-        const CENTER_K    = 2.6;   // lateral spring toward flame centerline
-        const NOISE_H     = 420;   // horizontal shimmer
+        const BUOYANCY = 380;   // upward accel (px/s²), fades near top
+        const CENTER_K = 3.2;   // lateral spring toward lick's swaying centerline
+        const NOISE_H  = 380;   // horizontal shimmer
+        const tSec = tMs * 0.001;
+
+        // Precompute per-lick sway offset at current time (the top-of-lick
+        // offset; at the base, offset is 0, scaled linearly with height).
+        const lickSwayNow = new Float32Array(FIRE_LICKS);
+        for (let k = 0; k < FIRE_LICKS; k++) {
+          lickSwayNow[k] = Math.sin(tSec * lickSwayFreq[k] * Math.PI * 2 + lickSwayPhase[k]) * lickSwayAmp[k];
+        }
 
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           fireAge[i] += dt * 1000;
-          if (fireAge[i] >= fireMaxAge[i] || py[i] < fireTopY) _fireRespawn(i);
+          const k = particleLick[i];
+          if (fireAge[i] >= fireMaxAge[i] || py[i] < lickTopY[k]) _fireRespawn(i);
 
-          const h = fireBaseY - fireTopY;
-          const hFrac = Math.max(0, Math.min(1, (fireBaseY - py[i]) / (h || 1)));
+          const reach = fireBaseY - lickTopY[k];
+          const hFrac = Math.max(0, Math.min(1, (fireBaseY - py[i]) / (reach || 1)));
 
-          // Buoyancy — strong at base, fades as the particle cools toward the top.
-          vy[i] -= BUOYANCY * (1 - hFrac * 0.6) * dt;
-          // Lateral pull toward centerline, stronger at the top so flame tapers.
-          vx[i] += (fireBaseCx - px[i]) * CENTER_K * (0.3 + hFrac) * dt;
+          // Swaying centerline: rooted at lickBaseX at the base, sways by
+          // lickSwayNow[k] at the top, linear interpolation in between.
+          const centerline = lickBaseX[k] + lickSwayNow[k] * hFrac;
+
+          // Buoyancy — scaled by intensity; fades as particle approaches apex.
+          vy[i] -= BUOYANCY * lickIntensity[k] * (1 - hFrac * 0.55) * dt;
+          // Lateral pull toward centerline (stronger near the top → tapered lick).
+          vx[i] += (centerline - px[i]) * CENTER_K * (0.3 + hFrac) * dt;
           // Shimmer
           vx[i] += (Math.random() - 0.5) * NOISE_H * dt;
 
@@ -4755,13 +4667,14 @@
           animTargets[i*2]   = px[i];
           animTargets[i*2+1] = py[i];
 
-          // Lifetime alpha: fast fade-in, plateau, soft fade-out.
+          // Lifetime alpha, brightness scaled by lick intensity so licks
+          // read as having different strengths.
           const lifeT = fireAge[i] / fireMaxAge[i];
           let a;
           if (lifeT < 0.08)      a = lifeT / 0.08;
           else if (lifeT < 0.65) a = 1;
           else                   a = (1 - lifeT) / 0.35;
-          flowAlpha[i] = Math.max(0, Math.min(1, a));
+          flowAlpha[i] = Math.max(0, Math.min(1, a * lickIntensity[k]));
         }
       }
 
@@ -5010,40 +4923,42 @@
       const mqlPhil = window.matchMedia('(max-width: 880px)');
 
       let _scrollRaf = 0;
+      let _lastAppliedOffset = NaN;
+      // The canvas extends BOTTOM_BLEED px below the viewport (covers behind
+      // Safari's translucent URL bar). Subtract that here so "pinned" means
+      // the *visible* canvas top sits at the viewport bottom.
+      const BOTTOM_BLEED = 90;
       function syncCanvasPos() {
         _scrollRaf = 0;
         if (!mqlPhil.matches || !firstPara || !philSection) {
           canvas.style.transform = '';
+          _lastAppliedOffset = NaN;
           return;
         }
         const vh = window.innerHeight;
-        const canvasH = canvas.offsetHeight;       // matches the 38vh mobile rule
+        const canvasH = canvas.offsetHeight - BOTTOM_BLEED;
         const p1Rect = firstPara.getBoundingClientRect();
         const sRect  = philSection.getBoundingClientRect();
 
-        // Where we'd like the canvas's top to sit (just below p1, like it's
-        // the next thing in flow).
         const flowTop = p1Rect.bottom + 16;
-        // Lowest allowed canvas-top while pinned — bottom of viewport minus
-        // its own height puts the canvas flush with the viewport bottom.
         const pinTop = vh - canvasH;
-        // As the section ends, anchor the canvas's bottom to the section's
-        // bottom so it rides out.
         const sectionAnchorTop = sRect.bottom - canvasH;
 
         let targetTop;
         if (flowTop > pinTop) {
-          // Canvas hasn't fully scrolled into viewport yet — follow p1.
           targetTop = flowTop;
         } else {
-          // Pinned or riding out with the section.
           targetTop = Math.min(pinTop, sectionAnchorTop);
         }
 
-        // Canvas's CSS rule places it at viewport bottom (top = pinTop).
-        // Translate from there to the desired position.
-        const offset = targetTop - pinTop;
-        canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
+        const offset = Math.round(targetTop - pinTop);
+        // Only write to the style when the value actually changed. Repeated
+        // writes of the same transform cause compositor-layer churn on iOS
+        // and have been contributing to the on-scroll flicker.
+        if (offset !== _lastAppliedOffset) {
+          canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
+          _lastAppliedOffset = offset;
+        }
       }
       function scheduleSync() {
         if (_scrollRaf) return;
