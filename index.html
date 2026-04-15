@@ -336,78 +336,53 @@
     }
 
     @media (max-width: 880px) {
-      section#philosophy {
-        padding: 4rem 0;
-        /* Allow sticky children to escape past the section box. */
-        overflow: visible;
-      }
+      section#philosophy { padding: 4rem 0; }
       #philosophy > .section-label,
       #philosophy > .section-title { padding-left: 1.5rem; padding-right: 1.5rem; }
-      /* Flatten the grid and text wrappers so their children become the
-         section's direct layout children. That makes the canvas's sticky
-         containing block the section itself, so the sticky range extends
-         all the way to the section's end instead of stopping where
-         .philosophy-text ends. */
       .philosophy-grid {
         grid-template-columns: 1fr;
         gap: 2.5rem;
         padding: 0 1.5rem;
+        /* Reserve vertical space below the text so that when the canvas is
+           pinned at the viewport bottom, the last paragraph can scroll past
+           it without the next section starting too soon. */
+        padding-bottom: calc(38vh + 2rem);
       }
       .philosophy-text {
         margin: 0 auto;
         justify-self: center;
-        margin-bottom: 2rem;
-      }
-      /* JS lifts the first paragraph up to section-level and sits the
-         canvas directly after it. That makes the canvas a section-level
-         flow child, so its sticky containing block is the section — the
-         pin holds through p2/p3/label and only releases at the section's
-         end. This class restyles the hoisted paragraph to match. */
-      .philosophy-lead {
-        font-family: var(--font-display);
-        font-size: 1.25rem;
-        line-height: 1.95;
-        color: var(--silver);
-        max-width: 540px;
-        margin: 0 auto 1.5rem;
-        padding: 0 1.5rem;
-      }
-      .philosophy-lead em,
-      .philosophy-lead strong {
-        color: var(--amber);
-        font-weight: inherit;
-        font-style: normal;
       }
       .philosophy-canvas-label { text-align: center; }
 
-      /* JS relocates the canvas into .philosophy-text after the first
-         paragraph on mobile. Because the grid and text wrappers are
-         display: contents, the canvas's effective flow parent is the
-         section — so sticky range runs all the way to section end. */
+      /* The canvas is a fixed-position overlay on mobile. Its vertical
+         position is driven by JS (transform: translateY) so it appears to
+         slide in from below p1 in natural page flow, pins at the viewport
+         bottom while p2/p3 scroll up behind it, then rides out anchored to
+         the section's bottom. Starts fully translated off-screen below. */
       #philosophy-canvas {
-        position: sticky;
+        position: fixed;
         top: auto;
         inset: auto;
         bottom: 0;
-        display: block;
-        /* Full-bleed out of the padded text container */
+        left: 0;
+        right: 0;
         width: 100vw;
-        margin-left: calc(50% - 50vw);
-        margin-right: calc(50% - 50vw);
-        margin-top: 1.75rem;
-        margin-bottom: 2rem;
         height: 38vh;
         min-height: 260px;
         max-height: 440px;
-        z-index: 2;
+        z-index: 50;
         pointer-events: none;
+        display: block;
+        /* Heavy cover so text behind is immediately hidden */
         background: linear-gradient(to bottom,
           rgba(26,26,26,0) 0%,
           rgba(26,26,26,0.95) 12%,
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        border-bottom: 1px solid rgba(212, 134, 58, 0.25);
+        /* Off-screen below by default — JS takes over on the first scroll event */
+        transform: translate3d(0, 100%, 0);
+        will-change: transform;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -1503,7 +1478,7 @@
           just function. It <em class="phrase-trigger" data-shape="MOVES">moves people</em>.
         </p>
         <p>
-          That's what Dream Software builds. <strong class="phrase-trigger" data-shape="CRAFT">Software worth looking at. Software worth
+          That's what Dream Software builds. <strong class="phrase-trigger" data-shape="FLOW">Software worth looking at. Software worth
           talking about.</strong> Software that proves technology and artistry aren't opposites — they're
           the same thing, <em class="phrase-trigger" data-shape="FORGED">forged together</em>.
         </p>
@@ -2898,15 +2873,16 @@
       if (!gl) return; // graceful: no canvas, plain text still readable
 
       const PARTICLE_COUNT = 4000;
-      const BRUSH_CYCLE_MS = 12500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true };
+      const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_LINES = ['we build', 'exceptional'];
-      // Phase boundaries (fractions of cycle)
-      const PH_PAINT_END    = 0.40;   // paint ~5.0s
-      const PH_MOVE_TO_REST = 0.46;
-      const PH_REST_END     = 0.66;   // rest ~2.5s
-      const PH_PICKUP_END   = 0.94;   // pickup ~3.5s
+      // Phase boundaries (fractions of cycle). Calibrated to a 21.5s cycle.
+      const PH_IDLE_END     = 0.12;   // brush-only hold ~2.6s
+      const PH_PAINT_END    = 0.35;   // paint ~4.9s
+      const PH_MOVE_TO_REST = 0.39;   // ~0.86s
+      const PH_REST_END     = 0.73;   // rest ~7.3s
+      const PH_PICKUP_END   = 0.96;   // pickup ~4.9s (was ~3.4s — extra time goes to the transition)
       const PAINT_STROKES   = 2;
       const PICKUP_STROKES  = 2;
       const CONVERGE_THRESHOLD_PX = 6;        // particle counted as "arrived" within this distance
@@ -3239,8 +3215,11 @@
         const restTipY  = safeTopY + safeH * 0.55;
         const restAngle = -Math.PI / 2.35;  // ~-77°
 
-        const baseAngle = -Math.PI / 3;     // -60° while sweeping lines
-        const wobble    = Math.sin(tCycleMs * 0.0017) * 0.085;
+        // Two base angles — handle "pulled" in the direction of horizontal motion.
+        // Rightward motion → handle top-right. Leftward motion → handle top-left.
+        const baseAngleR = -Math.PI / 3;        // -60°, handle top-right
+        const baseAngleL = -Math.PI * 2 / 3;    // -120°, handle top-left
+        const wobble     = Math.sin(tCycleMs * 0.0017) * 0.085;
 
         let tipX, tipY, angle;
         let paintProgress;
@@ -3250,47 +3229,56 @@
         const PAINT_WINDOW = 0.06;
         const PICKUP_WINDOW = 0.06;
 
-        // Sub-phase splits within paint/pickup: line-A sweep / transition / line-B sweep
-        // Transition is 20% of the phase — slow enough that particles can keep up with the brush
-        const SUB_END_A = 0.40;
-        const SUB_END_T = 0.60;
+        // Sub-phase splits within paint/pickup: line-A sweep / transition / line-B sweep.
+        // Paint: transition is 20% of phase. Pickup: transition is 44% of phase (slower —
+        // the bottom-to-top diagonal needs more time for particles to keep up cleanly).
+        const PAINT_SUB_A  = 0.40;
+        const PAINT_SUB_T  = 0.60;
+        const PICKUP_SUB_A = 0.28;
+        const PICKUP_SUB_T = 0.72;
 
-        if (cycle < PH_PAINT_END) {
-          // PAINT — top line L→R (with wiggle), transition, bottom line L→R (with wiggle)
-          const phaseT = cycle / PH_PAINT_END;
-          if (phaseT < SUB_END_A) {
-            const t = phaseT / SUB_END_A;
+        if (cycle < PH_IDLE_END) {
+          // IDLE — brush sits at paint-start with handle top-right, ready for the L→R stroke.
+          tipX = strokeL_x;
+          tipY = topLineY;
+          angle = baseAngleR + wobble;
+          paintProgress = 0;
+          pickupProgress = 0;
+        } else if (cycle < PH_PAINT_END) {
+          // PAINT — top L→R (handle right), transition TR→BL (handle LEFT), bottom L→R (handle right)
+          const phaseT = (cycle - PH_IDLE_END) / (PH_PAINT_END - PH_IDLE_END);
+          if (phaseT < PAINT_SUB_A) {
+            const t = phaseT / PAINT_SUB_A;
             tipX = strokeL_x + t * strokeW;
             tipY = topLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
-            angle = baseAngle + wobble + 0.03;
+            angle = baseAngleR + wobble + 0.03;
             paintProgress = t * 0.5;
-          } else if (phaseT < SUB_END_T) {
-            const t = (phaseT - SUB_END_A) / (SUB_END_T - SUB_END_A);
+          } else if (phaseT < PAINT_SUB_T) {
+            const t = (phaseT - PAINT_SUB_A) / (PAINT_SUB_T - PAINT_SUB_A);
             const eased = t * t * (3 - 2 * t);
             const sx = strokeL_x + strokeW, sy = topLineY;
             const ex = strokeL_x, ey = bottomLineY;
             tipX = sx + eased * (ex - sx);
             tipY = sy + eased * (ey - sy);
-            angle = baseAngle + wobble;
+            // Brush is moving left-down — handle leads up-and-to-the-LEFT (bristles follow behind)
+            angle = baseAngleL + wobble;
             paintProgress = 0.5;
           } else {
-            const t = (phaseT - SUB_END_T) / (1 - SUB_END_T);
+            const t = (phaseT - PAINT_SUB_T) / (1 - PAINT_SUB_T);
             tipX = strokeL_x + t * strokeW;
             tipY = bottomLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
-            angle = baseAngle + wobble + 0.03;
+            angle = baseAngleR + wobble + 0.03;
             paintProgress = 0.5 + t * 0.5;
           }
           pickupProgress = 0;
         } else if (cycle < PH_MOVE_TO_REST) {
-          // Transition from end-of-paint (bottom-right) to rest.
-          // Overshoot paintProgress to 1 + PAINT_WINDOW so stragglers (last-painted pixels
-          // like "exceptional"'s L) fully settle onto their word positions.
+          // Move to rest — ease angle from paint-right to rest angle
           const phaseT = (cycle - PH_PAINT_END) / (PH_MOVE_TO_REST - PH_PAINT_END);
           const eased = phaseT * phaseT * (3 - 2 * phaseT);
           const startX = strokeL_x + strokeW, startY = bottomLineY;
           tipX = startX + eased * (restTipX - startX);
           tipY = startY + eased * (restTipY - startY);
-          angle = (baseAngle + wobble) * (1 - eased) + restAngle * eased;
+          angle = (baseAngleR + wobble) * (1 - eased) + restAngle * eased;
           paintProgress = 1 + phaseT * PAINT_WINDOW;
           pickupProgress = 0;
         } else if (cycle < PH_REST_END) {
@@ -3301,53 +3289,59 @@
           paintProgress = 1 + PAINT_WINDOW;
           pickupProgress = 0;
         } else if (cycle < PH_PICKUP_END) {
-          // PICKUP — bottom line R→L (with wiggle), transition, top line R→L (with wiggle)
-          // Bottom first since rest is near the bottom/middle right of the words
+          // PICKUP — bottom R→L (handle LEFT), transition BL→TR (handle RIGHT), top R→L (handle LEFT)
           const phaseT = (cycle - PH_REST_END) / (PH_PICKUP_END - PH_REST_END);
-          // Scale pickup progress by (1 + PICKUP_WINDOW) so last-picked-up particles
-          // (e.g. leftmost pixels on the top line) fully resolve into the bristles.
-          const UP_SCALE = 1 + PICKUP_WINDOW;
-          if (phaseT < SUB_END_A) {
-            const t = phaseT / SUB_END_A;
+          const UP_SCALE = 1;
+          if (phaseT < PICKUP_SUB_A) {
+            const t = phaseT / PICKUP_SUB_A;
             tipX = strokeL_x + strokeW - t * strokeW;
             tipY = bottomLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
-            angle = baseAngle + wobble - 0.03;
+            angle = baseAngleL + wobble - 0.03;
             pickupProgress = t * 0.5 * UP_SCALE;
-          } else if (phaseT < SUB_END_T) {
-            const t = (phaseT - SUB_END_A) / (SUB_END_T - SUB_END_A);
+          } else if (phaseT < PICKUP_SUB_T) {
+            const t = (phaseT - PICKUP_SUB_A) / (PICKUP_SUB_T - PICKUP_SUB_A);
             const eased = t * t * (3 - 2 * t);
             const sx = strokeL_x, sy = bottomLineY;
             const ex = strokeL_x + strokeW, ey = topLineY;
             tipX = sx + eased * (ex - sx);
             tipY = sy + eased * (ey - sy);
-            angle = baseAngle + wobble;
+            // Brush is moving right-up — handle leads up-and-to-the-RIGHT
+            angle = baseAngleR + wobble;
             pickupProgress = 0.5 * UP_SCALE;
           } else {
-            const t = (phaseT - SUB_END_T) / (1 - SUB_END_T);
+            const t = (phaseT - PICKUP_SUB_T) / (1 - PICKUP_SUB_T);
             tipX = strokeL_x + strokeW - t * strokeW;
             tipY = topLineY + Math.sin(t * Math.PI * wiggleCycles) * wiggleAmp;
-            angle = baseAngle + wobble - 0.03;
+            angle = baseAngleL + wobble - 0.03;
             pickupProgress = (0.5 + t * 0.5) * UP_SCALE;
           }
           paintProgress = 1 + PAINT_WINDOW;
         } else {
-          // RETURN — pickup ends at top-left, which is exactly where paint starts next cycle.
-          // Hold position here so the next cycle begins cleanly without a hop.
+          // RETURN — ease the handle back from left-orientation (end of pickup top sweep)
+          // to right-orientation so the next cycle's IDLE begins with handle top-right.
+          const phaseT = (cycle - PH_PICKUP_END) / (1 - PH_PICKUP_END);
+          const eased = phaseT * phaseT * (3 - 2 * phaseT);
           tipX = strokeL_x;
           tipY = topLineY;
-          angle = baseAngle + wobble;
+          angle = (baseAngleL + wobble) * (1 - eased) + (baseAngleR + wobble) * eased;
           paintProgress = 1 + PAINT_WINDOW;
           pickupProgress = 1 + PICKUP_WINDOW;
         }
 
-        // Clamp tipX/tipY to safe region (accounting for handle extent at current angle)
+        // Clamp tipX/tipY to safe region (accounting for handle extent in either direction)
         const dirX = Math.cos(angle);
         const dirY = Math.sin(angle);
         const perpX = -dirY, perpY = dirX;
         const handleEndDx = dirX * totalLen;
         const handleEndDy = dirY * totalLen;
-        tipX = Math.max(safeLeftX + 4, Math.min(safeRightX - Math.max(0, handleEndDx) - 4, tipX));
-        tipY = Math.max(safeTopY - Math.min(0, handleEndDy) + 4, Math.min(safeBottomY - 4, tipY));
+        // When handle goes LEFT (handleEndDx < 0), the tip needs extra room on the left.
+        // When handle goes RIGHT (handleEndDx > 0), the tip needs extra room on the right.
+        const leftExt  = Math.min(0, handleEndDx);   // negative or 0
+        const rightExt = Math.max(0, handleEndDx);   // positive or 0
+        const topExt   = Math.min(0, handleEndDy);   // negative or 0
+        const bottomExt = Math.max(0, handleEndDy);  // positive or 0
+        tipX = Math.max(safeLeftX - leftExt + 4, Math.min(safeRightX - rightExt - 4, tipX));
+        tipY = Math.max(safeTopY - topExt + 4, Math.min(safeBottomY - bottomExt - 4, tipY));
 
         // Brush geometry chain
         const ferruleStartX = tipX + dirX * bristleLen;
@@ -3390,19 +3384,342 @@
             const ru = swatchReturnU[i], rv = swatchReturnV[i];
             const bristleTargetX = tipX + ru * (ferruleStartX - tipX) + perpX * rv * bristleHalfW * 2;
             const bristleTargetY = tipY + ru * (ferruleStartY - tipY) + perpY * rv * bristleHalfW * 2;
-            // Paint amount 0→1 (0 = in bristles, 1 = at word)
-            const pAmt = Math.max(0, Math.min(1, (paintProgress - po) / PAINT_WINDOW));
-            // Pickup amount 0→1 (0 = at word, 1 = back in bristles)
-            const uAmt = Math.max(0, Math.min(1, (pickupProgress - uo) / PICKUP_WINDOW));
-            // Combined: before pickup, particle sits between bristle and word by pAmt.
-            // Once pickup exceeds its order, the particle lerps back to bristles by uAmt.
-            // effective = pAmt * (1 - uAmt); 1 = at word, 0 = in bristles
-            const atWord = pAmt * (1 - uAmt);
-            tx = bristleTargetX + atWord * (sxAbs - bristleTargetX);
-            ty = bristleTargetY + atWord * (syAbs - bristleTargetY);
+            // Binary release: once brush has passed (paintProgress >= po) and before it's
+            // picked back up (pickupProgress < uo), target = word pixel. Otherwise = bristle.
+            // Spring physics takes the particle from wherever it actually IS to the target.
+            const released = paintProgress >= po && pickupProgress < uo;
+            if (released) { tx = sxAbs; ty = syAbs; }
+            else { tx = bristleTargetX; ty = bristleTargetY; }
           }
           animTargets[i*2] = tx;
           animTargets[i*2+1] = ty;
+        }
+      }
+
+      // ============================================================
+      // FLOW — automation/workflow graph. Nodes + edges rendered as
+      // particle outlines; packet squads stream along the edges at
+      // staggered phases, going invisible during their return leg.
+      // ============================================================
+      // 12 nodes — branching DAG with one source (0) and three sinks (9, 10, 11).
+      // Smaller rects to fit more nodes in the safe region.
+      const FLOW_NODES = [
+        { type: 'circle', x: 0.04, y: 0.50, w: 0.030, h: 0.085 }, // 0  trigger (source)
+        { type: 'rect',   x: 0.18, y: 0.50, w: 0.085, h: 0.105 }, // 1  splitter
+        { type: 'rect',   x: 0.38, y: 0.16, w: 0.085, h: 0.105 }, // 2  api-a
+        { type: 'rect',   x: 0.38, y: 0.50, w: 0.085, h: 0.105 }, // 3  filter
+        { type: 'rect',   x: 0.38, y: 0.84, w: 0.085, h: 0.105 }, // 4  database
+        { type: 'rect',   x: 0.58, y: 0.10, w: 0.085, h: 0.100 }, // 5  transform
+        { type: 'rect',   x: 0.58, y: 0.36, w: 0.085, h: 0.100 }, // 6  enrich
+        { type: 'rect',   x: 0.58, y: 0.62, w: 0.085, h: 0.100 }, // 7  aggregate
+        { type: 'rect',   x: 0.58, y: 0.88, w: 0.085, h: 0.100 }, // 8  queue
+        { type: 'circle', x: 0.78, y: 0.16, w: 0.030, h: 0.080 }, // 9  webhook out (sink)
+        { type: 'circle', x: 0.78, y: 0.50, w: 0.030, h: 0.080 }, // 10 notify (sink)
+        { type: 'circle', x: 0.78, y: 0.84, w: 0.030, h: 0.080 }, // 11 store (sink)
+      ];
+      const FLOW_EDGES = [
+        { a: 0,  b: 1  },  // 0
+        { a: 1,  b: 2  },  // 1
+        { a: 1,  b: 3  },  // 2
+        { a: 1,  b: 4  },  // 3
+        { a: 2,  b: 5  },  // 4
+        { a: 2,  b: 6  },  // 5
+        { a: 3,  b: 6  },  // 6
+        { a: 3,  b: 7  },  // 7
+        { a: 4,  b: 7  },  // 8
+        { a: 4,  b: 8  },  // 9
+        { a: 5,  b: 9  },  // 10
+        { a: 6,  b: 10 },  // 11
+        { a: 7,  b: 10 },  // 12
+        { a: 7,  b: 11 },  // 13
+        { a: 8,  b: 11 },  // 14
+      ];
+      // Source→sink routes as edge-index sequences (8 distinct paths).
+      const FLOW_PATHS = [
+        [0, 1, 4, 10],   // 0→1→2→5→9
+        [0, 1, 5, 11],   // 0→1→2→6→10
+        [0, 2, 6, 11],   // 0→1→3→6→10
+        [0, 2, 7, 12],   // 0→1→3→7→10
+        [0, 2, 7, 13],   // 0→1→3→7→11
+        [0, 3, 8, 12],   // 0→1→4→7→10
+        [0, 3, 8, 13],   // 0→1→4→7→11
+        [0, 3, 9, 14],   // 0→1→4→8→11
+      ];
+
+      const FLOW_NODE_PARTS = [55, 75, 70, 70, 80, 70, 70, 70, 70, 55, 55, 55]; // sum = 795
+      const FLOW_NODE_TOTAL = FLOW_NODE_PARTS.reduce((s, n) => s + n, 0);
+      const FLOW_EDGE_PER   = 60;
+      const FLOW_EDGE_TOTAL = FLOW_EDGES.length * FLOW_EDGE_PER;  // 15 * 60 = 900
+      const FLOW_PACKET_TOTAL = PARTICLE_COUNT - FLOW_NODE_TOTAL - FLOW_EDGE_TOTAL;
+      const FLOW_SQUADS = 56;
+      const FLOW_PKT_PER_SQUAD = Math.floor(FLOW_PACKET_TOTAL / FLOW_SQUADS);
+      // Cycle phases (ms): traverse → deliver (settle in end node, visible)
+      // → fade-out (in end node) → wait at source (invisible)
+      const FLOW_TRAVERSE_MS = 5400;
+      const FLOW_DELIVER_MS  = 550;
+      const FLOW_FADE_OUT_MS = 320;
+      const FLOW_WAIT_MS     = 700;
+      const FLOW_CYCLE_MS    = FLOW_TRAVERSE_MS + FLOW_DELIVER_MS + FLOW_FADE_OUT_MS + FLOW_WAIT_MS;
+      const FLOW_FADE_IN_MS  = 240;
+
+      const flowRole     = new Int8Array(PARTICLE_COUNT);
+      const flowNodeIdx  = new Int8Array(PARTICLE_COUNT);
+      const flowNodeU    = new Float32Array(PARTICLE_COUNT);
+      const flowNodeV    = new Float32Array(PARTICLE_COUNT);
+      const flowEdgeIdx  = new Int8Array(PARTICLE_COUNT);
+      const flowEdgeT    = new Float32Array(PARTICLE_COUNT);
+      const flowEdgeJ    = new Float32Array(PARTICLE_COUNT);
+      const flowSquadIdx = new Int16Array(PARTICLE_COUNT);
+      const flowPktJx    = new Float32Array(PARTICLE_COUNT);
+      const flowPktJy    = new Float32Array(PARTICLE_COUNT);
+      const flowSquadPath  = new Int8Array(FLOW_SQUADS);
+      const flowSquadPhase = new Float32Array(FLOW_SQUADS);
+      const flowSquadPrev  = new Float32Array(FLOW_SQUADS);
+
+      // Squad-particle index — for fast wrap-teleport without scanning all 4000
+      const flowSquadParticles = []; // arr of arrays of indices
+      for (let s = 0; s < FLOW_SQUADS; s++) flowSquadParticles.push([]);
+
+      (function assignFlowRoles() {
+        let idx = 0;
+        for (let n = 0; n < FLOW_NODES.length; n++) {
+          const count = FLOW_NODE_PARTS[n];
+          for (let i = 0; i < count; i++, idx++) {
+            flowRole[idx] = 0;
+            flowNodeIdx[idx] = n;
+            flowNodeU[idx] = i / count;
+            flowNodeV[idx] = (Math.random() - 0.5) * 0.25;
+          }
+        }
+        for (let e = 0; e < FLOW_EDGES.length; e++) {
+          for (let i = 0; i < FLOW_EDGE_PER; i++, idx++) {
+            flowRole[idx] = 1;
+            flowEdgeIdx[idx] = e;
+            flowEdgeT[idx] = i / FLOW_EDGE_PER;
+            flowEdgeJ[idx] = (Math.random() - 0.5) * 0.6;
+          }
+        }
+        for (let s = 0; s < FLOW_SQUADS; s++) {
+          flowSquadPath[s]  = Math.floor(Math.random() * FLOW_PATHS.length);
+          flowSquadPhase[s] = s / FLOW_SQUADS;
+          flowSquadPrev[s]  = flowSquadPhase[s];
+        }
+        for (let s = 0; s < FLOW_SQUADS; s++) {
+          for (let j = 0; j < FLOW_PKT_PER_SQUAD && idx < PARTICLE_COUNT; j++, idx++) {
+            flowRole[idx] = 2;
+            flowSquadIdx[idx] = s;
+            const rr = Math.random() * Math.random();
+            const aa = Math.random() * Math.PI * 2;
+            flowPktJx[idx] = Math.cos(aa) * rr;
+            flowPktJy[idx] = Math.sin(aa) * rr;
+            flowSquadParticles[s].push(idx);
+          }
+        }
+        let tail = FLOW_SQUADS - 1;
+        while (idx < PARTICLE_COUNT) {
+          flowRole[idx] = 2;
+          flowSquadIdx[idx] = tail;
+          flowPktJx[idx] = (Math.random() - 0.5);
+          flowPktJy[idx] = (Math.random() - 0.5);
+          flowSquadParticles[tail].push(idx);
+          idx++;
+        }
+      })();
+
+      const _flowNodeGeom = [];
+      for (let i = 0; i < FLOW_NODES.length; i++) _flowNodeGeom.push({ cx: 0, cy: 0, hw: 0, hh: 0 });
+
+      function _flowSafeRegion() {
+        const canvasRect = canvas.getBoundingClientRect();
+        let safeTopY = 20;
+        // On mobile the canvas is a standalone overlay (not a full-bleed
+        // background behind the grid), so the entire canvas is safe.
+        if (!isStacked) {
+          const gridEl = document.querySelector('.philosophy-grid');
+          const titleEl = document.querySelector('#philosophy .section-title');
+          if (gridEl) {
+            const gridTop = gridEl.getBoundingClientRect().top - canvasRect.top + 8;
+            if (gridTop > 0 && gridTop < H) safeTopY = Math.max(safeTopY, gridTop);
+          } else if (titleEl) {
+            const tr = titleEl.getBoundingClientRect();
+            safeTopY = Math.max(safeTopY, tr.bottom - canvasRect.top + 16);
+          }
+        }
+        const safeBottomY = H - 30;
+        return {
+          l: shapeLeftPx, r: shapeRightPx, t: safeTopY, b: safeBottomY,
+          w: shapeRightPx - shapeLeftPx, h: safeBottomY - safeTopY,
+        };
+      }
+
+      function _flowNodeOutlinePoint(geom, type, u, v, out) {
+        const cx = geom.cx, cy = geom.cy, hw = geom.hw, hh = geom.hh;
+        if (type === 'circle') {
+          const a = u * Math.PI * 2;
+          const r = Math.min(hw, hh) * (1 + v * 0.08);
+          out.x = cx + Math.cos(a) * r;
+          out.y = cy + Math.sin(a) * r;
+        } else if (type === 'rect') {
+          const W2 = hw * 2, H2 = hh * 2;
+          const per = 2 * (W2 + H2);
+          let d = u * per;
+          let x, y, nx, ny;
+          if (d < W2)             { x = cx - hw + d;            y = cy - hh;            nx = 0;  ny = -1; }
+          else if (d < W2 + H2)   { x = cx + hw;                y = cy - hh + (d-W2);   nx = 1;  ny = 0;  }
+          else if (d < 2*W2 + H2) { x = cx + hw - (d-W2-H2);    y = cy + hh;            nx = 0;  ny = 1;  }
+          else                    { x = cx - hw;                y = cy + hh - (d-2*W2-H2); nx = -1; ny = 0; }
+          out.x = x + nx * v * 3;
+          out.y = y + ny * v * 3;
+        } else { // cyl (database)
+          if (u < 0.35) {
+            const t = u / 0.35;
+            const a = Math.PI + t * Math.PI;
+            out.x = cx + Math.cos(a) * hw;
+            out.y = (cy - hh) + Math.sin(a) * hh * 0.28;
+          } else if (u < 0.50) {
+            const t = (u - 0.35) / 0.15;
+            out.x = cx + hw;
+            out.y = (cy - hh) + t * (2 * hh);
+          } else if (u < 0.85) {
+            const t = (u - 0.50) / 0.35;
+            const a = t * Math.PI * 2;
+            out.x = cx + Math.cos(a) * hw;
+            out.y = (cy + hh) + Math.sin(a) * hh * 0.28;
+          } else {
+            const t = (u - 0.85) / 0.15;
+            out.x = cx - hw;
+            out.y = (cy + hh) - t * (2 * hh);
+          }
+          out.x += v * 3;
+          out.y += v * 1;
+        }
+      }
+
+      const _flowTmp = { x: 0, y: 0 };
+      const _flowEdgeA = new Float32Array(FLOW_EDGES.length * 2);
+      const _flowEdgeB = new Float32Array(FLOW_EDGES.length * 2);
+      const _flowSquadCx    = new Float32Array(FLOW_SQUADS);
+      const _flowSquadCy    = new Float32Array(FLOW_SQUADS);
+      const _flowSquadAlpha = new Float32Array(FLOW_SQUADS);
+      const _flowSquadWrap  = new Uint8Array(FLOW_SQUADS);
+
+      function computeFlowTargets(tMs) {
+        const sr = _flowSafeRegion();
+        for (let n = 0; n < FLOW_NODES.length; n++) {
+          const nd = FLOW_NODES[n];
+          const g = _flowNodeGeom[n];
+          g.cx = sr.l + nd.x * sr.w;
+          g.cy = sr.t + nd.y * sr.h;
+          g.hw = Math.max(8, nd.w * sr.w * 0.5);
+          g.hh = Math.max(8, nd.h * sr.h * 0.5);
+        }
+        for (let e = 0; e < FLOW_EDGES.length; e++) {
+          const a = _flowNodeGeom[FLOW_EDGES[e].a];
+          const b = _flowNodeGeom[FLOW_EDGES[e].b];
+          _flowEdgeA[e*2] = a.cx; _flowEdgeA[e*2+1] = a.cy;
+          _flowEdgeB[e*2] = b.cx; _flowEdgeB[e*2+1] = b.cy;
+        }
+
+        // Phase boundaries in ms (cumulative): TRAVERSE → DELIVER → FADE_OUT → WAIT
+        const PH_TRAV    = FLOW_TRAVERSE_MS;
+        const PH_DELIVER = PH_TRAV + FLOW_DELIVER_MS;
+        const PH_FADE    = PH_DELIVER + FLOW_FADE_OUT_MS;
+        // (PH_WAIT_END = FLOW_CYCLE_MS)
+
+        for (let s = 0; s < FLOW_SQUADS; s++) {
+          const phMs = (tMs + flowSquadPhase[s] * FLOW_CYCLE_MS) % FLOW_CYCLE_MS;
+          const phFrac = phMs / FLOW_CYCLE_MS;
+          const wrapped = phFrac < flowSquadPrev[s];
+          _flowSquadWrap[s] = wrapped ? 1 : 0;
+          if (wrapped) flowSquadPath[s] = Math.floor(Math.random() * FLOW_PATHS.length);
+          flowSquadPrev[s] = phFrac;
+
+          const path = FLOW_PATHS[flowSquadPath[s]];
+          const pathLen = path.length;
+          // End node = destination of the path's last edge.
+          const endEdge = path[pathLen - 1];
+          const endNode = _flowNodeGeom[FLOW_EDGES[endEdge].b];
+
+          if (phMs < PH_TRAV) {
+            // Traversing along the path. Final segment lands the squad
+            // exactly at the end node center (alpha stays at 1).
+            const tt = phMs / PH_TRAV;
+            const segT = tt * pathLen;
+            let segIdx = Math.floor(segT);
+            if (segIdx >= pathLen) segIdx = pathLen - 1;
+            const localT = segT - segIdx;
+            const e = path[segIdx];
+            const ax = _flowEdgeA[e*2], ay = _flowEdgeA[e*2+1];
+            const bx = _flowEdgeB[e*2], by = _flowEdgeB[e*2+1];
+            _flowSquadCx[s] = ax + (bx - ax) * localT;
+            _flowSquadCy[s] = ay + (by - ay) * localT;
+            // Only fade-in at the very start — full alpha for the rest of traversal.
+            let a = 1;
+            if (phMs < FLOW_FADE_IN_MS) a = phMs / FLOW_FADE_IN_MS;
+            _flowSquadAlpha[s] = Math.max(0, Math.min(1, a));
+          } else if (phMs < PH_DELIVER) {
+            // Sitting in the end node, fully visible — "delivered".
+            _flowSquadCx[s] = endNode.cx;
+            _flowSquadCy[s] = endNode.cy;
+            _flowSquadAlpha[s] = 1;
+          } else if (phMs < PH_FADE) {
+            // Fading out inside the end node.
+            const t = (phMs - PH_DELIVER) / FLOW_FADE_OUT_MS;
+            _flowSquadCx[s] = endNode.cx;
+            _flowSquadCy[s] = endNode.cy;
+            _flowSquadAlpha[s] = 1 - t;
+          } else {
+            // Waiting at source, hidden — particles teleport here on wrap.
+            const sourceNode = _flowNodeGeom[FLOW_EDGES[path[0]].a];
+            _flowSquadCx[s] = sourceNode.cx;
+            _flowSquadCy[s] = sourceNode.cy;
+            _flowSquadAlpha[s] = 0;
+          }
+        }
+
+        const puffR = Math.max(6, Math.min(sr.w, sr.h) * 0.012);
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const role = flowRole[i];
+          let tx = 0, ty = 0, al = 1;
+          if (role === 0) {
+            const g = _flowNodeGeom[flowNodeIdx[i]];
+            const type = FLOW_NODES[flowNodeIdx[i]].type;
+            _flowNodeOutlinePoint(g, type, flowNodeU[i], flowNodeV[i], _flowTmp);
+            tx = _flowTmp.x; ty = _flowTmp.y;
+            al = 1;
+          } else if (role === 1) {
+            const e = flowEdgeIdx[i];
+            const ax = _flowEdgeA[e*2], ay = _flowEdgeA[e*2+1];
+            const bx = _flowEdgeB[e*2], by = _flowEdgeB[e*2+1];
+            const t = flowEdgeT[i];
+            const dx = bx - ax, dy = by - ay;
+            const len = Math.hypot(dx, dy) || 1;
+            const nx = -dy / len, ny = dx / len;
+            tx = ax + dx * t + nx * flowEdgeJ[i];
+            ty = ay + dy * t + ny * flowEdgeJ[i];
+            al = 0.32;
+          } else {
+            const s = flowSquadIdx[i];
+            tx = _flowSquadCx[s] + flowPktJx[i] * puffR;
+            ty = _flowSquadCy[s] + flowPktJy[i] * puffR;
+            al = _flowSquadAlpha[s];
+          }
+          animTargets[i*2]   = tx;
+          animTargets[i*2+1] = ty;
+          flowAlpha[i] = al;
+        }
+
+        // Wrap teleport: invisibly re-home packet particles to the new source puff
+        for (let s = 0; s < FLOW_SQUADS; s++) {
+          if (!_flowSquadWrap[s]) continue;
+          const arr = flowSquadParticles[s];
+          for (let k = 0; k < arr.length; k++) {
+            const i = arr[k];
+            px[i] = animTargets[i*2];
+            py[i] = animTargets[i*2+1];
+            vx[i] = 0; vy[i] = 0;
+          }
         }
       }
 
@@ -3410,26 +3727,30 @@
       const vs = `
         attribute vec2 aPos;
         attribute vec3 aCol;
+        attribute float aAlpha;
         uniform vec2 uRes;
         uniform float uDpr;
         varying vec3 vCol;
+        varying float vAlpha;
         void main() {
           vec2 clip = (aPos / uRes) * 2.0 - 1.0;
           clip.y = -clip.y;
           gl_Position = vec4(clip, 0.0, 1.0);
           gl_PointSize = 2.6 * uDpr;
           vCol = aCol;
+          vAlpha = aAlpha;
         }
       `;
       const fs = `
         precision mediump float;
         varying vec3 vCol;
+        varying float vAlpha;
         void main() {
           vec2 d = gl_PointCoord - vec2(0.5);
           float r = length(d);
           if (r > 0.5) discard;
           float a = smoothstep(0.5, 0.15, r);
-          gl_FragColor = vec4(vCol, a);
+          gl_FragColor = vec4(vCol, a * vAlpha);
         }
       `;
       function compile(type, src) {
@@ -3444,6 +3765,7 @@
       gl.useProgram(prog);
       const aPos = gl.getAttribLocation(prog, 'aPos');
       const aCol = gl.getAttribLocation(prog, 'aCol');
+      const aAlpha = gl.getAttribLocation(prog, 'aAlpha');
       const uRes = gl.getUniformLocation(prog, 'uRes');
       const uDpr = gl.getUniformLocation(prog, 'uDpr');
 
@@ -3452,6 +3774,11 @@
       const colBuf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
       gl.bufferData(gl.ARRAY_BUFFER, col, gl.STATIC_DRAW);
+      // Per-particle alpha — used by FLOW to hide packets during return phase.
+      // For static shapes this stays at 1.
+      const flowAlpha = new Float32Array(PARTICLE_COUNT);
+      for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
+      const alphaBuf = gl.createBuffer();
 
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive glow
@@ -3468,8 +3795,11 @@
         } else {
           targets = sampleShape(word);
         }
+        // Reset alpha — FLOW modulates per frame; everything else is fully opaque.
+        for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         const label = document.getElementById('phil-shape-name');
-        if (label) label.textContent = word === 'BRUSH' ? 'paintbrush' : word;
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow' };
+        if (label) label.textContent = labelMap[word] || word;
       }
 
       function burst() {
@@ -3528,6 +3858,8 @@
         // Animated shapes update their targets each frame
         if (isAnimated && currentShape === 'BRUSH') {
           computeBrushTargets(t);
+        } else if (isAnimated && currentShape === 'FLOW') {
+          computeFlowTargets(t);
         }
 
         let arrived = 0;
@@ -3577,6 +3909,11 @@
         gl.enableVertexAttribArray(aCol);
         gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 0, 0);
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, alphaBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, flowAlpha, gl.DYNAMIC_DRAW);
+        gl.enableVertexAttribArray(aAlpha);
+        gl.vertexAttribPointer(aAlpha, 1, gl.FLOAT, false, 0, 0);
+
         gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
 
         requestAnimationFrame(frame);
@@ -3598,46 +3935,69 @@
         });
       });
 
-      // --- Mobile: hoist the first paragraph up to be a direct child of the
-      //     section, with the canvas sitting directly after it — also as a
-      //     direct child of the section. That way the canvas's sticky
-      //     containing block IS the section, so the pin holds through p2/p3
-      //     /label and only releases at the section's end. On desktop,
-      //     everything goes back to where it started. ---
+      // --- Mobile: canvas is a fixed viewport-bottom overlay whose vertical
+      //     position is driven by scroll. It slides up from below as the user
+      //     reads past p1, pins at viewport bottom while p2/p3 scroll up
+      //     behind it, and anchors to the section bottom at the section's end
+      //     (so it rides out naturally with no visual jump). Desktop is
+      //     untouched — the CSS keeps canvas absolute full-bleed behind the
+      //     grid and this JS short-circuits when the breakpoint doesn't match.
       const philSection = document.getElementById('philosophy');
       const philText = document.querySelector('.philosophy-text');
       const firstPara = philText ? philText.querySelector(':scope > p:first-of-type') : null;
-      const philGrid = document.querySelector('.philosophy-grid');
       const mqlPhil = window.matchMedia('(max-width: 880px)');
-      const canvasHome = canvas.parentElement; // remember desktop home
-      const paraHome = firstPara ? firstPara.parentElement : null;
-      function placeCanvas() {
-        if (!canvas || !philSection) return;
-        if (mqlPhil.matches && firstPara && philGrid) {
-          // Move p1 up to be a section-level sibling right before philosophy-grid
-          if (firstPara.parentElement !== philSection) {
-            philSection.insertBefore(firstPara, philGrid);
-          }
-          firstPara.classList.add('philosophy-lead');
-          // Move the canvas immediately after the hoisted paragraph, still at section level
-          if (firstPara.nextElementSibling !== canvas) {
-            firstPara.after(canvas);
-          }
-        } else {
-          // Restore p1 to the top of .philosophy-text
-          if (firstPara && paraHome && firstPara.parentElement !== paraHome) {
-            paraHome.insertBefore(firstPara, paraHome.firstChild);
-          }
-          if (firstPara) firstPara.classList.remove('philosophy-lead');
-          if (canvas.parentElement !== canvasHome) {
-            canvasHome.appendChild(canvas);
-          }
+
+      let _scrollRaf = 0;
+      function syncCanvasPos() {
+        _scrollRaf = 0;
+        if (!mqlPhil.matches || !firstPara || !philSection) {
+          canvas.style.transform = '';
+          return;
         }
-        // Container size changed — re-run the WebGL resize so particles match
-        if (typeof resize === 'function') resize();
+        const vh = window.innerHeight;
+        const canvasH = canvas.offsetHeight;       // matches the 38vh mobile rule
+        const p1Rect = firstPara.getBoundingClientRect();
+        const sRect  = philSection.getBoundingClientRect();
+
+        // Where we'd like the canvas's top to sit (just below p1, like it's
+        // the next thing in flow).
+        const flowTop = p1Rect.bottom + 16;
+        // Lowest allowed canvas-top while pinned — bottom of viewport minus
+        // its own height puts the canvas flush with the viewport bottom.
+        const pinTop = vh - canvasH;
+        // As the section ends, anchor the canvas's bottom to the section's
+        // bottom so it rides out.
+        const sectionAnchorTop = sRect.bottom - canvasH;
+
+        let targetTop;
+        if (flowTop > pinTop) {
+          // Canvas hasn't fully scrolled into viewport yet — follow p1.
+          targetTop = flowTop;
+        } else {
+          // Pinned or riding out with the section.
+          targetTop = Math.min(pinTop, sectionAnchorTop);
+        }
+
+        // Canvas's CSS rule places it at viewport bottom (top = pinTop).
+        // Translate from there to the desired position.
+        const offset = targetTop - pinTop;
+        canvas.style.transform = `translate3d(0, ${offset}px, 0)`;
       }
-      placeCanvas();
-      mqlPhil.addEventListener('change', placeCanvas);
+      function scheduleSync() {
+        if (_scrollRaf) return;
+        _scrollRaf = requestAnimationFrame(syncCanvasPos);
+      }
+      window.addEventListener('scroll', scheduleSync, { passive: true });
+      window.addEventListener('resize', () => {
+        scheduleSync();
+        if (typeof resize === 'function') resize();
+      });
+      mqlPhil.addEventListener('change', () => {
+        if (typeof resize === 'function') resize();
+        scheduleSync();
+      });
+      // Run once after layout settles so initial position is right.
+      requestAnimationFrame(syncCanvasPos);
 
       // --- init ---
       window.addEventListener('resize', resize);
