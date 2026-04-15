@@ -197,11 +197,15 @@
     /* ===== HERO ===== */
     #hero {
       position: relative;
+      /* Lock hero height so Safari URL-bar animation can't reflow the
+         scroll arrow vs CTA spacing. Three-tier fallback:
+         1) 100vh for old browsers.
+         2) 100svh on modern browsers (small viewport, URL-bar visible).
+         3) --stable-vh set once by JS at load / orientationchange; wins
+            when defined so viewport-unit quirks can't shift hero mid-scroll. */
       min-height: 100vh;
-      /* Use the small viewport (URL-bar visible) on mobile so the scroll
-         indicator doesn't sit under Safari's chrome on first paint. Falls
-         back to 100vh on browsers without svh support. */
       min-height: 100svh;
+      min-height: var(--stable-vh, 100svh);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2967,6 +2971,32 @@
       }
     })();
 
+    // Lock hero height via --stable-vh. We set it once at load and only
+    // update on orientationchange — NOT on scroll-triggered resize — so
+    // Safari's URL-bar animation can't reshape the hero and jitter the
+    // spacing between the CTA and the scroll arrow.
+    (function lockStableVh() {
+      const setVh = () => {
+        const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+        document.documentElement.style.setProperty('--stable-vh', h + 'px');
+      };
+      setVh();
+      // Orientation changes legitimately change viewport; re-measure after
+      // the browser has settled.
+      window.addEventListener('orientationchange', () => setTimeout(setVh, 200));
+      // If the user actually resizes their desktop window (not a scroll
+      // artifact), update too. We detect "real" resize by ignoring height-
+      // only changes that are smaller than the likely URL-bar delta on mobile.
+      let lastW = window.innerWidth;
+      window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        if (Math.abs(w - lastW) > 1) { // width changed → real resize
+          lastW = w;
+          setVh();
+        }
+      });
+    })();
+
     // Mobile nav drawer
     function toggleMobileNav() {
       const nav = document.getElementById('mobile-nav');
@@ -4139,44 +4169,68 @@
           flowAlpha[i] = 1;
         }
 
-        // --- 3. Atmosphere particles: integrate directly, pull toward
-        //         "creative" samples, push away from nearby birds.
-        //         Neutralize the shared spring by setting target = current pos.
+        // --- 3. Word particles (strong pull to "creative", tiny bird push)
+        //         + Atmosphere particles (strongly pushed by birds, no word pull).
         const samples = aliveAttractSamples;
         const sampleN = samples ? samples.length / 2 : 0;
+        const cenX = sr.l + sr.w * 0.5, cenY = sr.t + sr.h * 0.5;
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          if (!atmoAssigned[i]) continue;
-          let ax = 0, ay = 0;
-          if (sampleN > 0) {
-            const si = ((i * 2654435761) ^ ((tMs * 0.013) | 0)) >>> 0;
-            const k = si % sampleN;
-            ax += (samples[k*2]   - px[i]) * ALIVE_ATMO_PULL_K;
-            ay += (samples[k*2+1] - py[i]) * ALIVE_ATMO_PULL_K;
+          const g = aliveGroup[i];
+          if (g === 1) {
+            let tx = px[i], ty = py[i];
+            if (sampleN > 0) {
+              const k = Math.floor(aliveWordU[i] * sampleN);
+              tx = samples[k*2]; ty = samples[k*2+1];
+            }
+            let ax = (tx - px[i]) * ALIVE_WORD_SPRING;
+            let ay = (ty - py[i]) * ALIVE_WORD_SPRING;
+            for (let b = 0; b < ALIVE_BIRDS; b++) {
+              const dx = px[i] - birdX[b], dy = py[i] - birdY[b];
+              const d2 = dx*dx + dy*dy;
+              if (d2 > ALIVE_WORD_PUSH_R * ALIVE_WORD_PUSH_R) continue;
+              const d = Math.sqrt(d2) || 0.001;
+              const f = (1 - d / ALIVE_WORD_PUSH_R) * ALIVE_WORD_PUSH_K;
+              ax += (dx / d) * f;
+              ay += (dy / d) * f;
+            }
+            ax += (Math.random() - 0.5) * ALIVE_WORD_NOISE;
+            ay += (Math.random() - 0.5) * ALIVE_WORD_NOISE;
+            vx[i] += ax * dt;
+            vy[i] += ay * dt;
+            vx[i] *= Math.exp(-ALIVE_WORD_DAMP * dt);
+            vy[i] *= Math.exp(-ALIVE_WORD_DAMP * dt);
+            px[i] += vx[i] * dt;
+            py[i] += vy[i] * dt;
+            animTargets[i*2]   = px[i];
+            animTargets[i*2+1] = py[i];
+            flowAlpha[i] = 1.0;
+          } else if (g === 2) {
+            let ax = 0, ay = 0;
+            for (let b = 0; b < ALIVE_BIRDS; b++) {
+              const dx = px[i] - birdX[b], dy = py[i] - birdY[b];
+              const d2 = dx*dx + dy*dy;
+              if (d2 > ALIVE_ATMO_PUSH_R * ALIVE_ATMO_PUSH_R) continue;
+              const d = Math.sqrt(d2) || 0.001;
+              const f = (1 - d / ALIVE_ATMO_PUSH_R) * ALIVE_ATMO_PUSH_K;
+              ax += (dx / d) * f;
+              ay += (dy / d) * f;
+            }
+            ax += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
+            ay += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
+            vx[i] += ax * dt;
+            vy[i] += ay * dt;
+            vx[i] *= Math.exp(-ALIVE_ATMO_DAMP * dt);
+            vy[i] *= Math.exp(-ALIVE_ATMO_DAMP * dt);
+            px[i] += vx[i] * dt;
+            py[i] += vy[i] * dt;
+            if (px[i] < sr.l) { px[i] = sr.l; vx[i] *= -0.4; }
+            if (px[i] > sr.r) { px[i] = sr.r; vx[i] *= -0.4; }
+            if (py[i] < sr.t) { py[i] = sr.t; vy[i] *= -0.4; }
+            if (py[i] > sr.b) { py[i] = sr.b; vy[i] *= -0.4; }
+            animTargets[i*2]   = px[i];
+            animTargets[i*2+1] = py[i];
+            flowAlpha[i] = 0.42;
           }
-          for (let b = 0; b < ALIVE_BIRDS; b++) {
-            const dx = px[i] - birdX[b], dy = py[i] - birdY[b];
-            const d2 = dx*dx + dy*dy;
-            if (d2 > ALIVE_ATMO_PUSH_R * ALIVE_ATMO_PUSH_R) continue;
-            const d = Math.sqrt(d2) || 0.001;
-            const f = (1 - d / ALIVE_ATMO_PUSH_R) * ALIVE_ATMO_PUSH_K;
-            ax += (dx / d) * f;
-            ay += (dy / d) * f;
-          }
-          ax += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
-          ay += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
-          vx[i] += ax * dt;
-          vy[i] += ay * dt;
-          vx[i] *= Math.exp(-ALIVE_ATMO_DAMP * dt);
-          vy[i] *= Math.exp(-ALIVE_ATMO_DAMP * dt);
-          px[i] += vx[i] * dt;
-          py[i] += vy[i] * dt;
-          if (px[i] < sr.l) { px[i] = sr.l; vx[i] *= -0.4; }
-          if (px[i] > sr.r) { px[i] = sr.r; vx[i] *= -0.4; }
-          if (py[i] < sr.t) { py[i] = sr.t; vy[i] *= -0.4; }
-          if (py[i] > sr.b) { py[i] = sr.b; vy[i] *= -0.4; }
-          animTargets[i*2]   = px[i];
-          animTargets[i*2+1] = py[i];
-          flowAlpha[i] = 0.55;
         }
       }
 
