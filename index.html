@@ -1802,13 +1802,13 @@
     <div class="section-title">About</div>
     <div class="about-intro">
       <p>
-        Dream Software is a boutique studio built for the moment software is being rewritten.
-        I've been building with LLMs since they were available to build with — before the
-        tooling was good, before the patterns existed, before anyone knew what "AI-native"
-        meant. That's not a line on a resume; it's the last several years of my working life.
-        DSS is currently one builder working directly with clients,
-        <strong>backed by a network of experienced software engineers I trust</strong>
-        for the parts that call for another voice.
+        Dream Software is a boutique studio for the kind of work that can't just be
+        handed off — where understanding your business matters as much as writing the code.
+        I've been building with AI since before the tooling was good, before the patterns
+        existed, before anyone knew what "AI-native" meant. That's not a line on a resume;
+        it's the last several years of my working life. DSS is one builder working directly
+        with you, <strong>backed by a network of experienced software engineers I
+        trust</strong> for the parts that call for another voice.
       </p>
     </div>
     <div class="about-grid">
@@ -1819,8 +1819,7 @@
         <h3>Ryan Lechner</h3>
         <div class="about-role">Founder &amp; Builder</div>
         <p>
-          Indiana-based software engineer, several years in, most of them spent building with AI.
-          I'm a fast study and a deep one — I read widely, write poetry, and think in terms of
+          Indiana-based — I read widely, write poetry, and think in terms of
           effect: how a thing will feel to the person on the other side of it, not just whether
           the spec is met. <strong>When I take on a project, I take it on fully</strong>: the technology, the
           people using it, the thing it's actually supposed to do in the world. Work I'm proud
@@ -3099,7 +3098,7 @@
 
       const PARTICLE_COUNT = 4000;
       const BRUSH_CYCLE_MS = 21500;            // full paintbrush animation cycle
-      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, FORGED: true, GLOBE: true };
+      const ANIMATED_SHAPES = { BRUSH: true, FLOW: true, ALIVE: true, GLOBE: true };
       const DEFAULT_SHAPE = 'BRUSH';           // paintbrush animation shown by default on load
       const SWATCH_VARIANTS = [
         ['we build', 'exceptional'],
@@ -4854,249 +4853,6 @@
         }
       }
 
-      // ============================================================
-      // FORGED — hammer + anvil + sparks. The word "forged" is rasterized
-      // as the anvil's top slab; an outline traces the rest of the anvil
-      // below it; a hammer cycles down to strike, launching a burst of
-      // sparks each cycle.
-      // ============================================================
-      const FORGED_WORD_COUNT   = 1800;
-      const FORGED_ANVIL_COUNT  = 500;
-      const FORGED_HAMMER_COUNT = 400;
-      const FORGED_CYCLE_MS = 1500;
-      const FORGED_GRAVITY  = 1400;
-
-      // Anvil outline (fractions of safe region, clockwise). Top slab holds
-      // the word; body narrows to a waist and flares to a wide base.
-      const _forgedAnvilVerts = [
-        [0.10, 0.46], [0.16, 0.42], [0.84, 0.42], [0.90, 0.46],
-        [0.84, 0.52], [0.84, 0.62], [0.66, 0.68], [0.64, 0.80],
-        [0.74, 0.86], [0.76, 0.92], [0.24, 0.92], [0.26, 0.86],
-        [0.36, 0.80], [0.34, 0.68], [0.16, 0.62], [0.16, 0.52],
-      ];
-
-      // 0=word, 1=anvil, 2=hammer, 3=spark
-      const forgedRole = new Int8Array(PARTICLE_COUNT);
-      const forgedAbsX = new Float32Array(PARTICLE_COUNT); // word/anvil=abs; hammer=local
-      const forgedAbsY = new Float32Array(PARTICLE_COUNT);
-
-      let forgedInitialized = false;
-      let forgedBoundsKey = '';
-      let forgedPrevPhase = 1;
-      let forgedCx = 0, forgedStrikeY = 0;
-      let forgedPivotStrikeX = 0, forgedPivotStrikeY = 0;
-      let forgedPivotApexDx  = 0, forgedPivotApexDy  = 0;
-      let forgedHammerTotalLen = 0;
-
-      (function assignForgedRoles() {
-        let idx = 0;
-        for (let i = 0; i < FORGED_WORD_COUNT && idx < PARTICLE_COUNT; i++, idx++)   forgedRole[idx] = 0;
-        for (let i = 0; i < FORGED_ANVIL_COUNT && idx < PARTICLE_COUNT; i++, idx++)  forgedRole[idx] = 1;
-        for (let i = 0; i < FORGED_HAMMER_COUNT && idx < PARTICLE_COUNT; i++, idx++) forgedRole[idx] = 2;
-        for (; idx < PARTICLE_COUNT; idx++) forgedRole[idx] = 3;
-      })();
-
-      function _forgedRasterWord(sr) {
-        const off = document.createElement('canvas');
-        off.width  = Math.max(1, Math.floor(sr.w));
-        off.height = Math.max(1, Math.floor(sr.h));
-        const ctx = off.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const WORD = 'technical art';
-        let fs = Math.floor(Math.min(sr.h * 0.30, sr.w * 0.14));
-        ctx.font = `italic 700 ${fs}px 'EB Garamond', Georgia, serif`;
-        while (ctx.measureText(WORD).width > off.width * 0.88 && fs > 12) {
-          fs -= 2;
-          ctx.font = `italic 700 ${fs}px 'EB Garamond', Georgia, serif`;
-        }
-        ctx.fillText(WORD, off.width * 0.5, off.height * 0.52);
-        const img = ctx.getImageData(0, 0, off.width, off.height).data;
-        const filled = [];
-        for (let y = 0; y < off.height; y += 2) {
-          for (let x = 0; x < off.width; x += 2) {
-            if (img[(y * off.width + x) * 4 + 3] > 128) filled.push(sr.l + x, sr.t + y);
-          }
-        }
-        let seed = (filled.length || 1) * 2654435761;
-        const rnd = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) / 4294967296); };
-        for (let i = filled.length / 2 - 1; i > 0; i--) {
-          const j = Math.floor(rnd() * (i + 1));
-          const ax = filled[i*2], ay = filled[i*2+1];
-          filled[i*2]   = filled[j*2];   filled[i*2+1] = filled[j*2+1];
-          filled[j*2]   = ax;            filled[j*2+1] = ay;
-        }
-        return filled;
-      }
-
-      // "technical art" text shape + occasional pond-ripple disturbance.
-      // Each particle has a stable target sampled from the rasterized word.
-      // A small pool of ripples can be active at once; each ripple expands
-      // outward from a random point on the word and dissipates over ~1.6s.
-      // Particles within the expanding ring get a brief outward impulse,
-      // then spring back to their target positions.
-      const MAX_RIPPLES = 4;
-      const rippleCx     = new Float32Array(MAX_RIPPLES);
-      const rippleCy     = new Float32Array(MAX_RIPPLES);
-      const rippleStart  = new Float32Array(MAX_RIPPLES);
-      const rippleActive = new Uint8Array(MAX_RIPPLES);
-      const RIPPLE_DURATION_MS   = 3800;
-      const RIPPLE_RING_HALF_PX  = 75;
-      const RIPPLE_PEAK_IMPULSE  = 75;   // px/s² — a nudge, not a shove
-      const RIPPLE_MIN_GAP_MS    = 3500;
-      const RIPPLE_MAX_GAP_MS    = 7500;
-      let nextRippleAt = 0;
-
-      function _forgedInit() {
-        const sr = _flowSafeRegion();
-        const key = sr.l + ':' + sr.r + ':' + sr.t + ':' + sr.b;
-        if (forgedInitialized && key === forgedBoundsKey) return;
-        forgedBoundsKey = key;
-
-        const wordPx = _forgedRasterWord(sr);
-        const wordN = wordPx.length / 2;
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          if (wordN === 0) {
-            forgedAbsX[i] = sr.l + sr.w * 0.5;
-            forgedAbsY[i] = sr.t + sr.h * 0.5;
-          } else {
-            const k = i % wordN;
-            forgedAbsX[i] = wordPx[k*2];
-            forgedAbsY[i] = wordPx[k*2+1];
-          }
-        }
-
-        for (let k = 0; k < MAX_RIPPLES; k++) rippleActive[k] = 0;
-        // First ripple gated ~2.5s after activation so the word has time to converge.
-        nextRippleAt = performance.now() + 2500;
-        forgedInitialized = true;
-      }
-
-      // Dead code retained below — left intact so existing references in the
-      // file (role arrays, helpers) don't error on load. None of it runs
-      // during FORGED because computeForgedTargets now drives the fire only.
-      function _forgedInit_oldDeadCode_unused() {
-        const sr = _flowSafeRegion();
-
-        // Anvil outline — distribute particles by perimeter arc-length.
-        const avx = [], avy = [];
-        for (const v of _forgedAnvilVerts) {
-          avx.push(sr.l + v[0] * sr.w);
-          avy.push(sr.t + v[1] * sr.h);
-        }
-        const segLens = [];
-        let totalLen = 0;
-        for (let i = 0; i < avx.length; i++) {
-          const j = (i + 1) % avx.length;
-          const L = Math.hypot(avx[j] - avx[i], avy[j] - avy[i]);
-          segLens.push(L); totalLen += L;
-        }
-        let ac = 0;
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          if (forgedRole[i] !== 1) continue;
-          const t = (ac / FORGED_ANVIL_COUNT) * totalLen;
-          ac++;
-          let acc = 0, seg = 0;
-          while (seg < segLens.length && acc + segLens[seg] < t) { acc += segLens[seg]; seg++; }
-          if (seg >= segLens.length) seg = segLens.length - 1;
-          const localT = segLens[seg] > 0 ? (t - acc) / segLens[seg] : 0;
-          const j = (seg + 1) % avx.length;
-          forgedAbsX[i] = avx[seg] + (avx[j] - avx[seg]) * localT;
-          forgedAbsY[i] = avy[seg] + (avy[j] - avy[seg]) * localT;
-        }
-
-        // Hammer — local coords in hammer frame. Pivot at (0,0) = blacksmith's
-        // grip (top of handle). +y runs along handle (screen-down at θ=0).
-        //
-        // Head is aligned with the handle (long axis parallel to handle),
-        // attached END-ON at the handle's bottom. The head's bottom short
-        // face is the STRIKING FACE — matches how real hammers work, where
-        // the skinny end face meets the workpiece. Handle stops at head-top,
-        // no overlap.
-        const handleLen   = sr.h * 0.20;
-        const handleHalfW = Math.max(1.5, sr.w * 0.010);
-        const headHalfW   = Math.max(3, sr.w * 0.028);   // narrow (along X)
-        const headH       = Math.max(6, sr.h * 0.095);   // tall along handle axis
-        const headTopLY   = handleLen;                   // head begins exactly where handle ends
-        const headBotLY   = handleLen + headH;           // striking face
-
-        // 65% head / 35% handle — head deserves more particle weight.
-        const headCount   = Math.floor(FORGED_HAMMER_COUNT * 0.65);
-        const handleCount = FORGED_HAMMER_COUNT - headCount;
-
-        const handleSegs = [
-          [[-handleHalfW, 0],          [ handleHalfW, 0]],
-          [[ handleHalfW, 0],          [ handleHalfW, handleLen]],
-          [[ handleHalfW, handleLen],  [-handleHalfW, handleLen]],
-          [[-handleHalfW, handleLen],  [-handleHalfW, 0]],
-        ];
-        const handleSLens = [2 * handleHalfW, handleLen, 2 * handleHalfW, handleLen];
-        const handlePerim = handleSLens.reduce((s, n) => s + n, 0);
-
-        const headSegs = [
-          [[-headHalfW, headTopLY], [ headHalfW, headTopLY]],
-          [[ headHalfW, headTopLY], [ headHalfW, headBotLY]],
-          [[ headHalfW, headBotLY], [-headHalfW, headBotLY]],
-          [[-headHalfW, headBotLY], [-headHalfW, headTopLY]],
-        ];
-        const headSLens = [2 * headHalfW, headH, 2 * headHalfW, headH];
-        const headPerim = headSLens.reduce((s, n) => s + n, 0);
-
-        let hc = 0;
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          if (forgedRole[i] !== 2) continue;
-          let segs, sLens, perim, count, ofs;
-          if (hc < headCount) {
-            segs = headSegs; sLens = headSLens; perim = headPerim; count = headCount; ofs = hc;
-          } else {
-            segs = handleSegs; sLens = handleSLens; perim = handlePerim; count = handleCount; ofs = hc - headCount;
-          }
-          const t = (ofs / count) * perim;
-          let acc = 0, seg = 0;
-          while (seg < 4 && acc + sLens[seg] < t) { acc += sLens[seg]; seg++; }
-          if (seg >= 4) seg = 3;
-          const localT = sLens[seg] > 0 ? (t - acc) / sLens[seg] : 0;
-          const p0 = segs[seg][0], p1 = segs[seg][1];
-          forgedAbsX[i] = p0[0] + (p1[0] - p0[0]) * localT;
-          forgedAbsY[i] = p0[1] + (p1[1] - p0[1]) * localT;
-          hc++;
-        }
-
-        forgedCx           = sr.l + sr.w * 0.5;
-        forgedStrikeY      = sr.t + sr.h * 0.42;      // anvil top
-        forgedHammerTotalLen = headBotLY;
-        // Strike pivot is placed so that at θ=0, head-bottom sits ON the anvil top.
-        forgedPivotStrikeX = forgedCx;
-        forgedPivotStrikeY = forgedStrikeY - headBotLY;
-        // Apex pivot offset: up and slightly back, as if the arm has retracted
-        // the shoulder/elbow for the swing. Pivot *translates* between strike
-        // and apex positions during the cycle, so the motion isn't a pure
-        // rotation — it's translation + rotation, like a mechanical arm.
-        forgedPivotApexDx  = -sr.w * 0.05;
-        forgedPivotApexDy  = -sr.h * 0.04;
-
-        // Seed sparks at impact — frame-0 wrap will launch them.
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          if (forgedRole[i] !== 3) continue;
-          px[i] = forgedCx;
-          py[i] = forgedStrikeY;
-          vx[i] = 0; vy[i] = 0;
-        }
-        forgedPrevPhase = 1;
-        forgedInitialized = true;
-      }
-
-      function computeForgedTargets(tMs, dt) {
-        _forgedInit();
-        // Static word — each particle springs to its stable sample position
-        // from the rasterized "technical art". No ripples, no motion.
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          animTargets[i*2]   = forgedAbsX[i];
-          animTargets[i*2+1] = forgedAbsY[i];
-          flowAlpha[i] = 1;
-        }
-      }
 
       // --- GL setup ---
       const vs = `
@@ -5185,7 +4941,6 @@
         // Reset alpha — FLOW/ALIVE modulate per frame; everything else is fully opaque.
         for (let i = 0; i < PARTICLE_COUNT; i++) flowAlpha[i] = 1;
         if (word === 'ALIVE') aliveInitialized = false;
-        if (word === 'FORGED') forgedInitialized = false;
         if (word === 'FLOW') {
           // Gather + staggered release:
           // During the gather window, every squad parks (visibly) at its source
@@ -5201,7 +4956,7 @@
           }
         }
         const label = document.getElementById('phil-shape-name');
-        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', GLOBE: 'cities' };
+        const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', GLOBE: 'cities' };
         if (label) label.textContent = labelMap[word] || word;
       }
 
@@ -5265,8 +5020,6 @@
           computeFlowTargets(t);
         } else if (isAnimated && currentShape === 'ALIVE') {
           computeAliveTargets(t, dt);
-        } else if (isAnimated && currentShape === 'FORGED') {
-          computeForgedTargets(t, dt);
         } else if (isAnimated && currentShape === 'GLOBE') {
           computeGlobeTargets(t - globeStartMs);
         }
