@@ -344,13 +344,19 @@
       margin: 0;
     }
 
-    #philosophy-canvas {
+    .philosophy-canvas-wrap {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       z-index: 0;
       pointer-events: none;
+    }
+
+    #philosophy-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
 
     #philosophy > .section-label,
@@ -445,11 +451,9 @@
       }
       .philosophy-canvas-label { text-align: center; }
 
-      /* The canvas is an in-flow sticky footer on mobile. It sits at the
-         natural end of the philosophy section and pins itself to the viewport
-         bottom while the section is in view, then rides out with the section
-         end. No JS, no compositor flicker — the browser handles it. */
-      #philosophy-canvas {
+      /* Sticky wrapper is the stable compositor layer — never repainted.
+         The WebGL canvas paints inside it without affecting sticky state. */
+      .philosophy-canvas-wrap {
         position: sticky;
         top: auto;
         inset: auto;
@@ -462,20 +466,23 @@
         max-height: 440px;
         z-index: 50;
         pointer-events: none;
-        display: block;
         margin-left: calc(50% - 50vw);
         margin-right: calc(50% - 50vw);
         margin-top: 2rem;
-        /* Heavy cover so text behind is immediately hidden */
         background: linear-gradient(to bottom,
           rgba(26,26,26,0) 0%,
           rgba(26,26,26,0.95) 12%,
           rgba(26,26,26,1) 20%,
           rgba(26,26,26,1) 100%);
         border-top: 1px solid rgba(212, 134, 58, 0.25);
-        /* box-shadow extends the charcoal cover 100px below the canvas so the
-           area behind Safari's translucent URL bar is also opaque. */
         box-shadow: 0 100px 0 0 rgb(26, 26, 26);
+      }
+
+      #philosophy-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
       }
 
       /* Make highlighted words clearly tappable on touch */
@@ -1611,7 +1618,9 @@
         </div>
       </div>
     </div>
-    <canvas id="philosophy-canvas" aria-hidden="true"></canvas>
+    <div class="philosophy-canvas-wrap">
+      <canvas id="philosophy-canvas" aria-hidden="true"></canvas>
+    </div>
   </section>
 
   <!-- PORTFOLIO -->
@@ -1778,14 +1787,20 @@
         <h3>Ryan Lechner</h3>
         <div class="about-role">Founder &amp; Builder</div>
         <p>
-          I sit down with you, hear the thing you're actually trying to solve, and turn it into
-          software that works — and that you'd be glad to look at. Beautiful and functional aren't
-          opposites; I treat them as the same job.
+          Dream Software is a boutique studio built for the moment software is being rewritten.
+          I've been building with LLMs since they were available to build with — before the
+          tooling was good, before the patterns existed, before anyone knew what "AI-native"
+          meant. That's not a line on a resume; it's the last several years of my working life.
+          DSS is currently one builder working directly with clients, backed by a network of
+          experienced software engineers I trust for the parts that call for another voice.
         </p>
         <p>
-          Background spans language and engineering. I read systems the way I read text: for
-          intent, rhythm, and the parts that are load-bearing. Currently building a handful of
-          projects across AI tooling, creative interfaces, and developer experience.
+          Indiana-based software engineer, several years in, most of them spent building with AI.
+          I'm a fast study and a deep one — I read widely, write poetry, and think in terms of
+          effect: how a thing will feel to the person on the other side of it, not just whether
+          the spec is met. When I take on a project, I take it on fully: the technology, the
+          people using it, the thing it's actually supposed to do in the world. Work I'm proud
+          of, with clients I want to keep working with.
         </p>
       </div>
     </div>
@@ -3664,6 +3679,10 @@
       const FLOW_WAIT_MS     = 700;
       const FLOW_CYCLE_MS    = FLOW_TRAVERSE_MS + FLOW_DELIVER_MS + FLOW_FADE_OUT_MS + FLOW_WAIT_MS;
       const FLOW_FADE_IN_MS  = 240;
+      // Gather window on activation — all squads park (visibly) at their
+      // source node long enough for packet particles to spring in from
+      // wherever they were in the previous shape.
+      const FLOW_GATHER_MS   = 1000;
 
       const flowRole     = new Int8Array(PARTICLE_COUNT);
       const flowNodeIdx  = new Int8Array(PARTICLE_COUNT);
@@ -3675,9 +3694,14 @@
       const flowSquadIdx = new Int16Array(PARTICLE_COUNT);
       const flowPktJx    = new Float32Array(PARTICLE_COUNT);
       const flowPktJy    = new Float32Array(PARTICLE_COUNT);
-      const flowSquadPath  = new Int8Array(FLOW_SQUADS);
-      const flowSquadPhase = new Float32Array(FLOW_SQUADS);
-      const flowSquadPrev  = new Float32Array(FLOW_SQUADS);
+      const flowSquadPath       = new Int8Array(FLOW_SQUADS);
+      const flowSquadPhase      = new Float32Array(FLOW_SQUADS);
+      const flowSquadPrev       = new Float32Array(FLOW_SQUADS);
+      // When each squad's first cycle begins (absolute ms). Before this,
+      // the squad is parked at its source — visibly during gather, then
+      // hidden while it waits for its stagger slot.
+      const flowSquadActivateAt = new Float32Array(FLOW_SQUADS);
+      let flowGatherUntil = 0;
 
       // Squad-particle index — for fast wrap-teleport without scanning all 4000
       const flowSquadParticles = []; // arr of arrays of indices
@@ -3755,17 +3779,20 @@
         };
       }
 
-      // ===== GLOBE — slowly rotating Earth with cities + population flow =====
-      // Orthographic 3D sphere (math CPU-side, output projected to 2D). Each particle
-      // is a "resident" of some city; periodically a batch is reassigned to travel along
-      // a great-circle arc to a new city. On arrival they join the destination cluster.
-      // Cluster visual radius scales with sqrt(resident count) so arrivals visibly grow a city.
-      const GLOBE_ROTATION_PERIOD_MS = 90000;   // ~90s per revolution (slow)
-      const GLOBE_TRAVEL_DURATION_MS = 4200;    // ~4s per city-to-city journey
-      const GLOBE_FLOW_INTERVAL_MS   = 1700;    // reassign particles every ~1.7s
-      const GLOBE_FLOW_BATCH_SIZE    = 55;
+      // ===== GLOBE — rotating Earth, stable per-particle source identity =====
+      // Each particle is bound to a single source for its lifetime, with two roles:
+      //   COAST particles each "own" a specific coastline point. When that point rotates
+      //   past the back terminator, the particle reassigns to a coastline point that's
+      //   currently emerging on the left edge — no other event triggers a target change.
+      //   CITY particles each reside at a specific city in a stable cluster slot. They
+      //   never reassign on their own; the only thing that changes their target is being
+      //   selected for migration. During migration they slerp along a great-circle arc;
+      //   on arrival they become a resident of the destination city.
+      const GLOBE_ROTATION_PERIOD_MS = 90000;
+      const GLOBE_TRAVEL_DURATION_MS = 4200;
+      const MIGRATION_INTERVAL_MS    = 1500;
+      const MIGRATION_BATCH_SIZE     = 28;
 
-      // Curated cities — name, latitude, longitude (degrees), population scale (1..4)
       const CITIES = [
         { name: 'Tokyo',           lat:  35.68, lon:  139.69, scale: 4 },
         { name: 'Delhi',           lat:  28.70, lon:   77.10, scale: 4 },
@@ -3830,7 +3857,6 @@
         { name: 'Reykjavik',       lat:  64.15, lon:  -21.94, scale: 2 },
       ];
 
-      // Pre-compute unit 3D vectors per city
       const _cityVecX = new Float32Array(CITIES.length);
       const _cityVecY = new Float32Array(CITIES.length);
       const _cityVecZ = new Float32Array(CITIES.length);
@@ -3842,7 +3868,6 @@
         _cityVecZ[c] =  Math.cos(latR) * Math.cos(lonR);
       }
 
-      // Destination-weighting CDF (bigger cities are more-frequent destinations)
       const _cityDestCDF = new Float32Array(CITIES.length);
       (function _buildDestCDF() {
         let sum = 0;
@@ -3866,31 +3891,12 @@
         return (exclude + 1) % CITIES.length;
       }
 
-      // Per-particle state
-      const cityHome    = new Int16Array(PARTICLE_COUNT);
-      const cityDest    = new Int16Array(PARTICLE_COUNT);  // -1 if stationary
-      const travelStart = new Float64Array(PARTICLE_COUNT);
-      const angOff      = new Float32Array(PARTICLE_COUNT);
-      const radOff      = new Float32Array(PARTICLE_COUNT);
-
-      const cityCount   = new Int32Array(CITIES.length);
-
-      // Coastline points — total sphere positions from the Natural Earth dataset.
-      // Particles are assigned to a subset and get recycled onto newly-emerging points
-      // as the globe rotates, so nothing is rendered on the back hemisphere.
       const COAST_POINT_TOTAL = (typeof GLOBE_COASTLINES !== 'undefined')
         ? Math.floor(GLOBE_COASTLINES.length / 2)
         : 0;
-      const COAST_PARTICLE_COUNT = Math.min(
-        Math.floor(COAST_POINT_TOTAL * 0.55),
-        Math.floor(PARTICLE_COUNT / 2)
-      );
       const coastVecX = new Float32Array(COAST_POINT_TOTAL);
       const coastVecY = new Float32Array(COAST_POINT_TOTAL);
       const coastVecZ = new Float32Array(COAST_POINT_TOTAL);
-      const coastPointIdx  = new Int16Array(COAST_PARTICLE_COUNT);
-      const _pointAssigned = new Uint8Array(COAST_POINT_TOTAL);
-
       (function _initCoastPoints() {
         if (typeof GLOBE_COASTLINES === 'undefined') return;
         for (let p = 0; p < COAST_POINT_TOTAL; p++) {
@@ -3902,21 +3908,91 @@
         }
       })();
 
-      function _coastResetAssignments() {
-        for (let p = 0; p < COAST_POINT_TOTAL; p++) _pointAssigned[p] = 0;
-        let placed = 0, tries = 0;
-        while (placed < COAST_PARTICLE_COUNT && tries < COAST_PARTICLE_COUNT * 10) {
-          tries++;
-          const p = (Math.random() * COAST_POINT_TOTAL) | 0;
-          if (_pointAssigned[p]) continue;
-          _pointAssigned[p] = 1;
-          coastPointIdx[placed++] = p;
-        }
-      }
-      _coastResetAssignments();
+      // Particle pool split: COAST holds coastline points, CITY are residents/migrants.
+      // With 5000+ coastline samples, we can dedicate more particles to outline density.
+      const COAST_PARTICLE_COUNT = Math.min(
+        2000,
+        Math.max(0, COAST_POINT_TOTAL - 400),
+        Math.floor(PARTICLE_COUNT * 0.50)
+      );
+      const CITY_PARTICLE_START = COAST_PARTICLE_COUNT;
+      const CITY_PARTICLE_COUNT = PARTICLE_COUNT - CITY_PARTICLE_START;
 
-      function _globeInitParticles() {
-        // Distribute non-coastline particles across cities weighted by scale
+      // Per-particle stable identity
+      const coastIdx        = new Int16Array(PARTICLE_COUNT);  // valid only for COAST particles
+      const _coastPointHeld = new Uint8Array(COAST_POINT_TOTAL);
+      const cityIdx         = new Int16Array(PARTICLE_COUNT);  // current resident city (CITY only)
+      const transitDest     = new Int16Array(PARTICLE_COUNT);  // -1 if not in transit
+      const transitStart    = new Float64Array(PARTICLE_COUNT);
+      const transitDur      = new Float32Array(PARTICLE_COUNT);
+      const cityClusterAng  = new Float32Array(PARTICLE_COUNT);
+      const cityClusterRad  = new Float32Array(PARTICLE_COUNT);
+      const cityCount       = new Int32Array(CITIES.length);
+
+      let globeStartMs       = 0;
+      let _globePrevMs       = 0;
+      let _globeLastMigMs    = 0;
+      // Rotation state — accumulates from automatic spin and from user drag.
+      // Auto-spin pauses while the user is actively dragging the globe.
+      let _globeRotation       = 0;
+      let _globeIsDragging     = false;
+      let _globeDragStartCX    = 0;
+      let _globeDragStartRot   = 0;
+      let _globeActivePointer  = -1;
+
+      // Isolation score: how far this candidate point is from its nearest currently-held
+      // neighbor. Higher score = more isolated = better for filling outline gaps.
+      // Uses random sampling to keep cost O(samples) per call regardless of pool size.
+      function _scoreCoastIsolation(p, samples) {
+        const qx = coastVecX[p], qy = coastVecY[p], qz = coastVecZ[p];
+        let minD2 = Infinity;
+        for (let s = 0; s < samples; s++) {
+          const i = (Math.random() * COAST_POINT_TOTAL) | 0;
+          if (i === p || !_coastPointHeld[i]) continue;
+          const dx = coastVecX[i] - qx;
+          const dy = coastVecY[i] - qy;
+          const dz = coastVecZ[i] - qz;
+          const d2 = dx*dx + dy*dy + dz*dz;
+          if (d2 < minD2) minD2 = d2;
+        }
+        return minD2;
+      }
+
+      function _globeReset() {
+        _globePrevMs    = 0;
+        _globeLastMigMs = 0;
+        _globeRotation  = 0;
+        _globeIsDragging = false;
+
+        // COAST: each particle picks the most-isolated of K random unheld candidates,
+        // so the initial particle distribution spreads uniformly across all coastlines
+        // instead of clumping in the densely-sampled regions of the dataset.
+        for (let p = 0; p < COAST_POINT_TOTAL; p++) _coastPointHeld[p] = 0;
+        const INIT_CANDIDATES = 6;
+        const INIT_NEIGH_SAMPLES = 30;
+        for (let placed = 0; placed < COAST_PARTICLE_COUNT; placed++) {
+          let bestP = -1, bestScore = -1;
+          for (let k = 0; k < INIT_CANDIDATES; k++) {
+            for (let tries = 0; tries < 8; tries++) {
+              const p = (Math.random() * COAST_POINT_TOTAL) | 0;
+              if (_coastPointHeld[p]) continue;
+              const score = _scoreCoastIsolation(p, INIT_NEIGH_SAMPLES);
+              if (score > bestScore) { bestScore = score; bestP = p; }
+              break;
+            }
+          }
+          if (bestP === -1) {
+            // Fallback: linear scan for any unheld point (shouldn't usually fire)
+            for (let p = 0; p < COAST_POINT_TOTAL; p++) {
+              if (!_coastPointHeld[p]) { bestP = p; break; }
+            }
+          }
+          if (bestP === -1) break;
+          _coastPointHeld[bestP] = 1;
+          coastIdx[placed]       = bestP;
+        }
+
+        // CITY: distribute by scale weighting
         const weightSum = CITIES.reduce((s, c) => s + c.scale, 0);
         const cdf = new Float32Array(CITIES.length);
         let running = 0;
@@ -3924,86 +4000,178 @@
           running += CITIES[c].scale;
           cdf[c] = running / weightSum;
         }
-        for (let i = COAST_PARTICLE_COUNT; i < PARTICLE_COUNT; i++) {
+        for (let i = CITY_PARTICLE_START; i < PARTICLE_COUNT; i++) {
           const r = Math.random();
           let c = 0;
           while (c < CITIES.length - 1 && cdf[c] < r) c++;
-          cityHome[i] = c;
-          cityDest[i] = -1;
-          travelStart[i] = 0;
-          angOff[i] = Math.random() * Math.PI * 2;
-          radOff[i] = Math.sqrt(Math.random());
-        }
-        // Coastline particles never travel or belong to a city
-        for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
-          cityHome[i] = 0; cityDest[i] = -1; travelStart[i] = 0;
+          cityIdx[i]        = c;
+          transitDest[i]    = -1;
+          cityClusterAng[i] = Math.random() * Math.PI * 2;
+          cityClusterRad[i] = Math.sqrt(Math.random());
         }
       }
-      _globeInitParticles();
+      _globeReset();
 
-      let globeStartMs = 0;
-      let _globeLastFlowMs = 0;
-
-      function _globeReset() {
-        _globeLastFlowMs = 0;
-        _globeInitParticles();
-        _coastResetAssignments();
-      }
-
-      function computeGlobeTargets(tMs) {
+      // ---- Drag-to-rotate ----
+      // Pointer events are listened on the philosophy section (since the canvas itself
+      // has pointer-events: none for text-selection reasons). Only fires on GLOBE.
+      function _globePointInDisc(clientX, clientY) {
         const sr = _flowSafeRegion();
         const ccx = sr.l + sr.w / 2;
         const ccy = sr.t + sr.h / 2;
         const R = Math.min(sr.w, sr.h) * 0.42;
+        const rect = canvas.getBoundingClientRect();
+        const dx = (clientX - rect.left) - ccx;
+        const dy = (clientY - rect.top) - ccy;
+        return dx*dx + dy*dy <= R * R;
+      }
+      const _philSection = document.querySelector('#philosophy');
+      if (_philSection) {
+        _philSection.addEventListener('pointerdown', (e) => {
+          if (currentShape !== 'GLOBE') return;
+          // Don't grab if the user is interacting with text or a phrase trigger
+          if (e.target.closest('.philosophy-text, .phrase-trigger, a, button')) return;
+          if (!_globePointInDisc(e.clientX, e.clientY)) return;
+          _globeIsDragging   = true;
+          _globeDragStartCX  = e.clientX;
+          _globeDragStartRot = _globeRotation;
+          _globeActivePointer = e.pointerId;
+          _philSection.style.cursor = 'grabbing';
+          try { _philSection.setPointerCapture(e.pointerId); } catch (_) {}
+          e.preventDefault();
+        });
+        _philSection.addEventListener('pointermove', (e) => {
+          if (_globeIsDragging && e.pointerId === _globeActivePointer) {
+            const dx = e.clientX - _globeDragStartCX;
+            // Sensitivity: ~500px of horizontal drag = one full revolution
+            _globeRotation = _globeDragStartRot + dx * (Math.PI * 2 / 500);
+            e.preventDefault();
+            return;
+          }
+          // Hover cursor — show "grab" when the pointer hovers the globe disc
+          if (currentShape === 'GLOBE'
+              && !e.target.closest('.philosophy-text, .phrase-trigger, a, button')
+              && _globePointInDisc(e.clientX, e.clientY)) {
+            _philSection.style.cursor = 'grab';
+          } else if (_philSection.style.cursor === 'grab') {
+            _philSection.style.cursor = '';
+          }
+        });
+        const endDrag = (e) => {
+          if (_globeIsDragging && e.pointerId === _globeActivePointer) {
+            _globeIsDragging = false;
+            _globeActivePointer = -1;
+            try { _philSection.releasePointerCapture(e.pointerId); } catch (_) {}
+            // Cursor returns to grab if still over disc, else default
+            if (currentShape === 'GLOBE' && _globePointInDisc(e.clientX, e.clientY)) {
+              _philSection.style.cursor = 'grab';
+            } else {
+              _philSection.style.cursor = '';
+            }
+          }
+        };
+        _philSection.addEventListener('pointerup', endDrag);
+        _philSection.addEventListener('pointercancel', endDrag);
+        _philSection.addEventListener('pointerleave', (e) => {
+          if (!_globeIsDragging && _philSection.style.cursor === 'grab') {
+            _philSection.style.cursor = '';
+          }
+        });
+      }
 
-        const rotAngle = (tMs / GLOBE_ROTATION_PERIOD_MS) * Math.PI * 2;
+      function _maybeStartMigration(tMs) {
+        if (tMs - _globeLastMigMs < MIGRATION_INTERVAL_MS) return;
+        _globeLastMigMs = tMs;
 
+        // Find an origin city with enough residents for a batch
+        let originCity = -1, bestCount = 0;
+        for (let tries = 0; tries < 20; tries++) {
+          const c = (Math.random() * CITIES.length) | 0;
+          if (cityCount[c] >= MIGRATION_BATCH_SIZE && cityCount[c] > bestCount) {
+            originCity = c;
+            bestCount = cityCount[c];
+          }
+        }
+        if (originCity === -1) return;
+        const destCity = _pickDestCity(originCity);
+
+        // Move MIGRATION_BATCH_SIZE residents into transit
+        let assigned = 0;
+        for (let i = CITY_PARTICLE_START; i < PARTICLE_COUNT && assigned < MIGRATION_BATCH_SIZE; i++) {
+          if (cityIdx[i] === originCity && transitDest[i] === -1) {
+            transitDest[i]   = destCity;
+            transitStart[i]  = tMs;
+            transitDur[i]    = GLOBE_TRAVEL_DURATION_MS * (0.85 + Math.random() * 0.30);
+            assigned++;
+          }
+        }
+      }
+
+      function computeGlobeTargets(tMs) {
+        const dt = Math.min(0.05, Math.max(0, (tMs - _globePrevMs) / 1000));
+        _globePrevMs = tMs;
+
+        const sr = _flowSafeRegion();
+        const ccx = sr.l + sr.w / 2;
+        const ccy = sr.t + sr.h / 2;
+        const R = Math.min(sr.w, sr.h) * 0.42;
+        // Rotation: auto-spin advances when the user isn't dragging
+        if (!_globeIsDragging) {
+          _globeRotation += dt * (Math.PI * 2 / (GLOBE_ROTATION_PERIOD_MS / 1000));
+        }
+        const rotAngle = _globeRotation;
         const cosR = Math.cos(rotAngle), sinR = Math.sin(rotAngle);
 
-        // ---- Coastline particles with recycle-on-rotate-away ----
-        // Each particle shows one coastline point. When a point rotates past the back
-        // edge, we release it and grab a point that's just emerging on the left edge,
-        // teleporting the particle's physical position so no visible arc crosses the globe.
-        const RECYCLE_Z_MAX     = -0.08;   // particle's current point is behind the globe by this much → recycle
-        const SPAWN_Z_MIN       = -0.04;   // new spawn point must be close to terminator or in front
-        const SPAWN_Z_MAX        =  0.25;   // but not too far into the front (reserved for stable particles)
+        // Count current residents per city (excluding in-transit) — drives cluster radius
+        for (let c = 0; c < CITIES.length; c++) cityCount[c] = 0;
+        for (let i = CITY_PARTICLE_START; i < PARTICLE_COUNT; i++) {
+          if (transitDest[i] === -1) cityCount[cityIdx[i]]++;
+        }
+        _maybeStartMigration(tMs);
+
+        // ---- COAST particles ----
+        const RECYCLE_Z_MAX =  -0.08;
+        const SPAWN_Z_MIN   =  -0.04;
+        const SPAWN_Z_MAX   =   0.20;
         for (let i = 0; i < COAST_PARTICLE_COUNT; i++) {
-          let p = coastPointIdx[i];
+          let p = coastIdx[i];
           let qx = coastVecX[p], qy = coastVecY[p], qz = coastVecZ[p];
           let rx =  qx * cosR + qz * sinR;
           let rz = -qx * sinR + qz * cosR;
           let ry =  qy;
 
           if (rz < RECYCLE_Z_MAX) {
-            // Release this point and try to grab a new one emerging on the left edge
-            _pointAssigned[p] = 0;
-            let found = false;
-            for (let tries = 0; tries < 14; tries++) {
+            // Reassign to a point emerging on the left edge.
+            // Of the candidates that pass the spawn constraints, prefer the one most
+            // isolated from currently-held neighbors so we fill outline gaps.
+            _coastPointHeld[p] = 0;
+            let bestP = -1, bestScore = -1;
+            let bestRx = 0, bestRy = 0, bestRz = 0;
+            const RECYCLE_NEIGH_SAMPLES = 24;
+            const RECYCLE_NEEDED_CANDIDATES = 5;
+            let candidatesSeen = 0;
+            for (let tries = 0; tries < 30 && candidatesSeen < RECYCLE_NEEDED_CANDIDATES; tries++) {
               const cand = (Math.random() * COAST_POINT_TOTAL) | 0;
-              if (_pointAssigned[cand]) continue;
+              if (_coastPointHeld[cand]) continue;
               const cx2 = coastVecX[cand], cy2 = coastVecY[cand], cz2 = coastVecZ[cand];
               const crx =  cx2 * cosR + cz2 * sinR;
               const crz = -cx2 * sinR + cz2 * cosR;
-              if (crx < 0 && crz >= SPAWN_Z_MIN && crz <= SPAWN_Z_MAX) {
-                p = cand;
-                _pointAssigned[p] = 1;
-                coastPointIdx[i] = p;
-                rx = crx; rz = crz; ry = cy2;
-                // Teleport particle's physical position and zero its velocity so it
-                // appears exactly at the new spawn location (no visible dash across globe)
-                const sx = ccx + rx * R;
-                const sy = ccy + ry * R;
-                px[i] = sx;
-                py[i] = sy;
-                vx[i] = 0;
-                vy[i] = 0;
-                found = true;
-                break;
+              if (crx >= 0 || crz < SPAWN_Z_MIN || crz > SPAWN_Z_MAX) continue;
+              candidatesSeen++;
+              const score = _scoreCoastIsolation(cand, RECYCLE_NEIGH_SAMPLES);
+              if (score > bestScore) {
+                bestScore = score;
+                bestP = cand;
+                bestRx = crx; bestRy = cy2; bestRz = crz;
               }
             }
-            if (!found) {
-              // No suitable spawn point this frame — keep ownership of current, try again next frame
-              _pointAssigned[p] = 1;
+            if (bestP !== -1) {
+              p = bestP;
+              _coastPointHeld[p] = 1;
+              coastIdx[i] = p;
+              rx = bestRx; ry = bestRy; rz = bestRz;
+            } else {
+              _coastPointHeld[p] = 1;
             }
           }
 
@@ -4011,99 +4179,72 @@
           animTargets[i*2+1] = ccy + ry * R;
 
           let a;
-          if (rz > 0.08) a = 0.82;
-          else if (rz > -0.15) a = 0.82 * ((rz + 0.15) / 0.23);
+          if (rz > 0.08) a = 0.85;
+          else if (rz > -0.15) a = 0.85 * ((rz + 0.15) / 0.23);
           else a = 0;
           flowAlpha[i] = a;
         }
 
-        // Flow: reassign a batch of stationary city-particles to new destinations
-        const cityPoolStart = COAST_PARTICLE_COUNT;
-        const cityPoolSize = PARTICLE_COUNT - COAST_PARTICLE_COUNT;
-        if (cityPoolSize > 0 && tMs - _globeLastFlowMs > GLOBE_FLOW_INTERVAL_MS) {
-          _globeLastFlowMs = tMs;
-          let launched = 0, tries = 0;
-          while (launched < GLOBE_FLOW_BATCH_SIZE && tries < GLOBE_FLOW_BATCH_SIZE * 4) {
-            tries++;
-            const i = cityPoolStart + ((Math.random() * cityPoolSize) | 0);
-            if (cityDest[i] !== -1) continue;
-            cityDest[i] = _pickDestCity(cityHome[i]);
-            travelStart[i] = tMs;
-            launched++;
-          }
-        }
-
-        // Count stationary residents per city (city pool only)
-        for (let c = 0; c < CITIES.length; c++) cityCount[c] = 0;
-        for (let i = cityPoolStart; i < PARTICLE_COUNT; i++) {
-          if (cityDest[i] === -1) cityCount[cityHome[i]]++;
-        }
-
-        const expectedResidents = cityPoolSize / CITIES.length;
+        // ---- CITY particles (residents + in-transit migrants) ----
+        const expectedResidents = CITY_PARTICLE_COUNT / CITIES.length;
         const BASE_ANG_RAD = 0.022;
-
-        for (let i = cityPoolStart; i < PARTICLE_COUNT; i++) {
-          let px, py, pz;
-          if (cityDest[i] !== -1) {
-            // TRAVELING: slerp origin → dest along great circle
-            const t = Math.min(1, (tMs - travelStart[i]) / GLOBE_TRAVEL_DURATION_MS);
-            const oi = cityHome[i], di = cityDest[i];
+        for (let i = CITY_PARTICLE_START; i < PARTICLE_COUNT; i++) {
+          let px3, py3, pz3;
+          if (transitDest[i] !== -1) {
+            // In transit: slerp origin → dest along great circle
+            const t = Math.min(1, (tMs - transitStart[i]) / transitDur[i]);
+            const oi = cityIdx[i], di = transitDest[i];
             const ox = _cityVecX[oi], oy = _cityVecY[oi], oz = _cityVecZ[oi];
             const dx = _cityVecX[di], dy = _cityVecY[di], dz = _cityVecZ[di];
-            const dot = Math.max(-1, Math.min(1, ox*dx + oy*dy + oz*dz));
-            const theta = Math.acos(dot);
+            const dotp = Math.max(-1, Math.min(1, ox*dx + oy*dy + oz*dz));
+            const theta = Math.acos(dotp);
             if (theta < 0.001) {
-              px = ox; py = oy; pz = oz;
+              px3 = ox; py3 = oy; pz3 = oz;
             } else {
               const sinT = Math.sin(theta);
               const k0 = Math.sin((1 - t) * theta) / sinT;
               const k1 = Math.sin(t * theta) / sinT;
-              px = ox*k0 + dx*k1;
-              py = oy*k0 + dy*k1;
-              pz = oz*k0 + dz*k1;
+              px3 = ox*k0 + dx*k1;
+              py3 = oy*k0 + dy*k1;
+              pz3 = oz*k0 + dz*k1;
             }
             if (t >= 1) {
-              // Arrived: become resident of destination
-              cityHome[i] = di;
-              cityDest[i] = -1;
+              // Arrive: become a resident of destination, fresh cluster slot
+              cityIdx[i]        = di;
+              transitDest[i]    = -1;
+              cityClusterAng[i] = Math.random() * Math.PI * 2;
+              cityClusterRad[i] = Math.sqrt(Math.random());
             }
           } else {
-            // STATIONARY: tangent-plane offset from city center
-            const ci = cityHome[i];
+            // Resident: tangent-plane offset from city center
+            const ci = cityIdx[i];
             const hx = _cityVecX[ci], hy = _cityVecY[ci], hz = _cityVecZ[ci];
-            // Cluster radius grows with sqrt(residents) — arrivals make the dot visibly bigger
             const clusterScale = Math.sqrt(Math.max(1, cityCount[ci]) / expectedResidents);
-            const rad = BASE_ANG_RAD * clusterScale * radOff[i];
-            // Tangent frame: east = up × home (up = (0,-1,0) screen-up)
-            let eX =  1 * hz - 0;
-            let eY =  0;
-            let eZ =  0 - 1 * hx;
+            const rad = BASE_ANG_RAD * clusterScale * cityClusterRad[i];
+            // Tangent frame: east = cross(screen_up, home), north = cross(home, east)
+            let eX =  hz;
+            let eZ = -hx;
             let eLen = Math.sqrt(eX*eX + eZ*eZ);
-            if (eLen < 1e-6) { eX = 1; eY = 0; eZ = 0; eLen = 1; }
+            if (eLen < 1e-6) { eX = 1; eZ = 0; eLen = 1; }
             eX /= eLen; eZ /= eLen;
-            // north = home × east
-            const nX = hy*eZ - hz*eY;
-            const nY = hz*eX - hx*eZ;
-            const nZ = hx*eY - hy*eX;
-            const c1 = Math.cos(angOff[i]), s1 = Math.sin(angOff[i]);
-            px = hx + (eX*c1 + nX*s1) * rad;
-            py = hy + (eY*c1 + nY*s1) * rad;
-            pz = hz + (eZ*c1 + nZ*s1) * rad;
-            // Re-normalize to sphere
-            const len = Math.sqrt(px*px + py*py + pz*pz);
-            if (len > 1e-6) { px /= len; py /= len; pz /= len; }
+            const nX =  hy * eZ;
+            const nY =  hz * eX - hx * eZ;
+            const nZ = -hy * eX;
+            const c1 = Math.cos(cityClusterAng[i]), s1 = Math.sin(cityClusterAng[i]);
+            px3 = hx + (eX*c1 + nX*s1) * rad;
+            py3 = hy + (         nY*s1) * rad;
+            pz3 = hz + (eZ*c1 + nZ*s1) * rad;
+            const len = Math.sqrt(px3*px3 + py3*py3 + pz3*pz3);
+            if (len > 1e-6) { px3 /= len; py3 /= len; pz3 /= len; }
           }
 
-          // Apply globe rotation (cosR/sinR hoisted at top of function)
-          const rx =  px * cosR + pz * sinR;
-          const rz = -px * sinR + pz * cosR;
-          const ry =  py;
-
-          // Orthographic projection
+          // Project to 2D
+          const rx =  px3 * cosR + pz3 * sinR;
+          const rz = -px3 * sinR + pz3 * cosR;
+          const ry =  py3;
           animTargets[i*2]   = ccx + rx * R;
           animTargets[i*2+1] = ccy + ry * R;
 
-          // Fade behind the globe (terminator line smoothing)
           let a;
           if (rz > 0.08) a = 1.0;
           else if (rz > -0.15) a = (rz + 0.15) / 0.23;
@@ -4187,18 +4328,32 @@
         // (PH_WAIT_END = FLOW_CYCLE_MS)
 
         for (let s = 0; s < FLOW_SQUADS; s++) {
-          const phMs = (tMs + flowSquadPhase[s] * FLOW_CYCLE_MS) % FLOW_CYCLE_MS;
+          const path = FLOW_PATHS[flowSquadPath[s]];
+          const pathLen = path.length;
+          const endEdge = path[pathLen - 1];
+          const endNode = _flowNodeGeom[FLOW_EDGES[endEdge].b];
+          const sourceNode = _flowNodeGeom[FLOW_EDGES[path[0]].a];
+
+          // Before this squad's activation moment: park at source node.
+          // Visible during the initial gather window (so the user sees
+          // packets converging), hidden afterward while the squad waits
+          // its stagger turn.
+          if (tMs < flowSquadActivateAt[s]) {
+            _flowSquadCx[s] = sourceNode.cx;
+            _flowSquadCy[s] = sourceNode.cy;
+            _flowSquadAlpha[s] = tMs < flowGatherUntil ? 1 : 0;
+            _flowSquadWrap[s] = 0;
+            continue;
+          }
+
+          // Normal cycle — elapsed since THIS squad's activation.
+          const elapsed = tMs - flowSquadActivateAt[s];
+          const phMs = elapsed % FLOW_CYCLE_MS;
           const phFrac = phMs / FLOW_CYCLE_MS;
           const wrapped = phFrac < flowSquadPrev[s];
           _flowSquadWrap[s] = wrapped ? 1 : 0;
           if (wrapped) flowSquadPath[s] = Math.floor(Math.random() * FLOW_PATHS.length);
           flowSquadPrev[s] = phFrac;
-
-          const path = FLOW_PATHS[flowSquadPath[s]];
-          const pathLen = path.length;
-          // End node = destination of the path's last edge.
-          const endEdge = path[pathLen - 1];
-          const endNode = _flowNodeGeom[FLOW_EDGES[endEdge].b];
 
           if (phMs < PH_TRAV) {
             // Traversing along the path. Final segment lands the squad
@@ -4230,7 +4385,6 @@
             _flowSquadAlpha[s] = 1 - t;
           } else {
             // Waiting at source, hidden — particles teleport here on wrap.
-            const sourceNode = _flowNodeGeom[FLOW_EDGES[path[0]].a];
             _flowSquadCx[s] = sourceNode.cx;
             _flowSquadCy[s] = sourceNode.cy;
             _flowSquadAlpha[s] = 0;
@@ -4346,7 +4500,16 @@
       const ALIVE_ATMO_PUSH_R  = 42;
       const ALIVE_ATMO_PUSH_K  = 260;
       const ALIVE_ATMO_NOISE   = 26;
-      const ALIVE_ATMO_CENTER_K = 0.25; // very weak pull back to safe-region center (so they don't pile at edges)
+      // Soft edge turnaround — push atmosphere away from the safe-region walls
+      // when they get too close, so they don't pile up at the borders.
+      const ALIVE_ATMO_EDGE_PAD   = 42;
+      const ALIVE_ATMO_EDGE_FORCE = 260;
+      // Atmosphere-to-atmosphere repulsion: farther range + stronger force so
+      // atmosphere particles behave like an expanding gas, spreading to fill
+      // the whole safe region rather than pooling locally.
+      const ALIVE_ATMO_PP_R       = 55;
+      const ALIVE_ATMO_PP_K       = 180;
+      const ALIVE_ATMO_PP_SAMPLES = 5;
 
       // Particle split within the non-bird remainder (1440 total)
       const ALIVE_WORD_COUNT = 1100;
@@ -4418,12 +4581,15 @@
         }
       })();
 
-      // Pre-compute the list of word-particle indices for fast neighbor sampling.
+      // Pre-compute index lists for fast same-group neighbor sampling.
       const aliveWordIndices = [];
+      const aliveAtmoIndices = [];
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         if (aliveGroup[i] === 1) aliveWordIndices.push(i);
+        else if (aliveGroup[i] === 2) aliveAtmoIndices.push(i);
       }
       const aliveWordIdxN = aliveWordIndices.length;
+      const aliveAtmoIdxN = aliveAtmoIndices.length;
 
       function _aliveInit() {
         const sr = _flowSafeRegion();
@@ -4607,6 +4773,7 @@
             flowAlpha[i] = 1.0;
           } else if (g === 2) {
             let ax = 0, ay = 0;
+            // Push from birds
             for (let b = 0; b < ALIVE_BIRDS; b++) {
               const dx = px[i] - birdX[b], dy = py[i] - birdY[b];
               const d2 = dx*dx + dy*dy;
@@ -4615,6 +4782,34 @@
               const f = (1 - d / ALIVE_ATMO_PUSH_R) * ALIVE_ATMO_PUSH_K;
               ax += (dx / d) * f;
               ay += (dy / d) * f;
+            }
+            // Soft edge turnaround — inward force that ramps up as a particle
+            // nears each wall (0 outside the pad, full at the wall itself).
+            if (px[i] < sr.l + ALIVE_ATMO_EDGE_PAD) {
+              ax += ALIVE_ATMO_EDGE_FORCE * (1 - (px[i] - sr.l) / ALIVE_ATMO_EDGE_PAD);
+            }
+            if (px[i] > sr.r - ALIVE_ATMO_EDGE_PAD) {
+              ax -= ALIVE_ATMO_EDGE_FORCE * (1 - (sr.r - px[i]) / ALIVE_ATMO_EDGE_PAD);
+            }
+            if (py[i] < sr.t + ALIVE_ATMO_EDGE_PAD) {
+              ay += ALIVE_ATMO_EDGE_FORCE * (1 - (py[i] - sr.t) / ALIVE_ATMO_EDGE_PAD);
+            }
+            if (py[i] > sr.b - ALIVE_ATMO_EDGE_PAD) {
+              ay -= ALIVE_ATMO_EDGE_FORCE * (1 - (sr.b - py[i]) / ALIVE_ATMO_EDGE_PAD);
+            }
+            // Atmosphere-to-atmosphere repulsion — stochastic, short-range,
+            // weak. Keeps particles from coalescing into tight clumps.
+            for (let s = 0; s < ALIVE_ATMO_PP_SAMPLES && aliveAtmoIdxN > 1; s++) {
+              const j = aliveAtmoIndices[Math.floor(Math.random() * aliveAtmoIdxN)];
+              if (j === i) continue;
+              const dxp = px[i] - px[j];
+              const dyp = py[i] - py[j];
+              const dp2 = dxp * dxp + dyp * dyp;
+              if (dp2 > ALIVE_ATMO_PP_R * ALIVE_ATMO_PP_R) continue;
+              const dp = Math.sqrt(dp2) || 0.001;
+              const f = (1 - dp / ALIVE_ATMO_PP_R) * ALIVE_ATMO_PP_K;
+              ax += (dxp / dp) * f;
+              ay += (dyp / dp) * f;
             }
             ax += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
             ay += (Math.random() - 0.5) * ALIVE_ATMO_NOISE;
@@ -4968,11 +5163,18 @@
         if (word === 'ALIVE') aliveInitialized = false;
         if (word === 'FORGED') forgedInitialized = false;
         if (word === 'FLOW') {
-          // Prevent the wrap-teleport from firing on frame 1 (which would snap
-          // all packets onto their source nodes). Setting prev to 0 ensures
-          // the phFrac < prev check is false; packets spring into place from
-          // wherever they were in the previous shape.
-          for (let s = 0; s < FLOW_SQUADS; s++) flowSquadPrev[s] = 0;
+          // Gather + staggered release:
+          // During the gather window, every squad parks (visibly) at its source
+          // node so packet particles can spring in from wherever they were in
+          // the previous shape. After gather, squads activate one-by-one per
+          // their natural stagger (invisible until their turn), producing a
+          // continuous wave of packets emerging from the source.
+          const now = performance.now();
+          flowGatherUntil = now + FLOW_GATHER_MS;
+          for (let s = 0; s < FLOW_SQUADS; s++) {
+            flowSquadPrev[s] = 0;
+            flowSquadActivateAt[s] = flowGatherUntil + flowSquadPhase[s] * FLOW_CYCLE_MS;
+          }
         }
         const label = document.getElementById('phil-shape-name');
         const labelMap = { BRUSH: 'paintbrush', FLOW: 'workflow', ALIVE: 'flocking', FORGED: 'forging', GLOBE: 'cities' };
@@ -5059,7 +5261,8 @@
           // spring + damping (spring gated by hold-fade; damping lighter during hold for flowy motion)
           vx[i] += dx * SPRING_K * holdFade * dt;
           vy[i] += dy * SPRING_K * holdFade * dt;
-          const damp = holding ? DAMPING * 0.45 : DAMPING;
+          const _isGlobeShape = (currentShape === 'GLOBE');
+          const damp = holding ? DAMPING * 0.45 : (_isGlobeShape ? DAMPING * 1.65 : DAMPING);
           vx[i] *= Math.exp(-damp * dt);
           vy[i] *= Math.exp(-damp * dt);
           px[i] += vx[i] * dt;
