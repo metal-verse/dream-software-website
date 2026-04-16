@@ -724,11 +724,27 @@
       border-top: 1px solid var(--graphite);
     }
 
+    .about-intro {
+      max-width: 900px;
+      margin-bottom: 3rem;
+    }
+
+    .about-intro p {
+      color: var(--light);
+      line-height: 1.8;
+      font-size: 1rem;
+    }
+
+    .about-intro strong {
+      color: var(--amber);
+      font-weight: inherit;
+    }
+
     .about-grid {
       display: grid;
       grid-template-columns: 260px 1fr;
       gap: 3rem;
-      align-items: start;
+      align-items: center;
       max-width: 900px;
     }
 
@@ -780,6 +796,11 @@
     }
 
     .about-body p + p { color: var(--silver); }
+
+    .about-body strong {
+      color: var(--amber);
+      font-weight: inherit;
+    }
 
     @media (max-width: 700px) {
       .about-grid { grid-template-columns: 1fr; gap: 2rem; }
@@ -1779,6 +1800,17 @@
   <section id="about">
     <div class="section-label">// Who's Behind This</div>
     <div class="section-title">About</div>
+    <div class="about-intro">
+      <p>
+        Dream Software is a boutique studio built for the moment software is being rewritten.
+        I've been building with LLMs since they were available to build with — before the
+        tooling was good, before the patterns existed, before anyone knew what "AI-native"
+        meant. That's not a line on a resume; it's the last several years of my working life.
+        DSS is currently one builder working directly with clients,
+        <strong>backed by a network of experienced software engineers I trust</strong>
+        for the parts that call for another voice.
+      </p>
+    </div>
     <div class="about-grid">
       <div class="about-portrait">
         <img src="assets/ryan-lechner.jpg" alt="Ryan Lechner" loading="lazy">
@@ -1787,18 +1819,10 @@
         <h3>Ryan Lechner</h3>
         <div class="about-role">Founder &amp; Builder</div>
         <p>
-          Dream Software is a boutique studio built for the moment software is being rewritten.
-          I've been building with LLMs since they were available to build with — before the
-          tooling was good, before the patterns existed, before anyone knew what "AI-native"
-          meant. That's not a line on a resume; it's the last several years of my working life.
-          DSS is currently one builder working directly with clients, backed by a network of
-          experienced software engineers I trust for the parts that call for another voice.
-        </p>
-        <p>
           Indiana-based software engineer, several years in, most of them spent building with AI.
           I'm a fast study and a deep one — I read widely, write poetry, and think in terms of
           effect: how a thing will feel to the person on the other side of it, not just whether
-          the spec is met. When I take on a project, I take it on fully: the technology, the
+          the spec is met. <strong>When I take on a project, I take it on fully</strong>: the technology, the
           people using it, the thing it's actually supposed to do in the world. Work I'm proud
           of, with clients I want to keep working with.
         </p>
