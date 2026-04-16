@@ -2945,10 +2945,8 @@
         const result = await response.json();
 
         if (result.success) {
-          form.style.display = 'none';
-          document.querySelector('.modal-body > p').style.display = 'none';
-          document.getElementById('cf-success').classList.add('active');
-          form.reset();
+          window.location.href = '/thank-you';
+          return;
         } else {
           btn.textContent = 'Something went wrong — try again';
           btn.disabled = false;

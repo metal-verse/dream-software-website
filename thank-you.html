@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thank You — Dream Software Solutions</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <meta name="theme-color" content="#1A1A1A">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --charcoal: #1A1A1A;
+      --graphite: #2A2A2A;
+      --slate: #3D3D3D;
+      --iron: #666666;
+      --silver: #999999;
+      --light: #E8E4E0;
+      --warm-white: #FAF8F5;
+      --amber: #D4863A;
+      --copper: #E8A85C;
+      --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
+      --font-body: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--charcoal);
+      color: var(--warm-white);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 3rem;
+      background: rgba(26, 26, 26, 0.95);
+      border-bottom: 1px solid rgba(212, 134, 58, 0.25);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+    }
+
+    .nav-logo-text {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--warm-white);
+      letter-spacing: 2px;
+    }
+
+    .nav-logo-sub {
+      font-family: var(--font-body);
+      font-size: 0.55rem;
+      color: var(--silver);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    .nav-back {
+      color: var(--silver);
+      text-decoration: none;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+      transition: color 0.3s;
+    }
+
+    .nav-back:hover { color: var(--amber); }
+
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 3rem;
+    }
+
+    .thank-you {
+      max-width: 620px;
+      text-align: center;
+    }
+
+    .thank-you-icon {
+      margin-bottom: 2rem;
+      opacity: 0.9;
+    }
+
+    .thank-you h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 3vw, 2.5rem);
+      font-weight: 700;
+      color: var(--warm-white);
+      margin-bottom: 1.5rem;
+      letter-spacing: 1px;
+    }
+
+    .thank-you-body {
+      text-align: left;
+      margin-bottom: 2.5rem;
+    }
+
+    .thank-you-body p {
+      color: var(--silver);
+      font-size: 1rem;
+      line-height: 1.85;
+      margin-bottom: 1rem;
+    }
+
+    .thank-you-body strong {
+      color: var(--light);
+      font-weight: 600;
+    }
+
+    .what-next {
+      background: var(--graphite);
+      border: 1px solid var(--slate);
+      border-left: 2px solid var(--amber);
+      border-radius: 4px;
+      padding: 1.25rem 1.5rem;
+      text-align: left;
+      margin-bottom: 2.5rem;
+    }
+
+    .what-next-label {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--amber);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .what-next p {
+      color: var(--silver);
+      font-size: 0.95rem;
+      line-height: 1.8;
+    }
+
+    .confidentiality {
+      font-size: 0.85rem;
+      color: var(--iron);
+      margin-bottom: 2.5rem;
+      line-height: 1.7;
+    }
+
+    .back-link {
+      display: inline-block;
+      color: var(--amber);
+      text-decoration: none;
+      font-size: 0.9rem;
+      letter-spacing: 0.5px;
+      transition: color 0.3s;
+    }
+
+    .back-link:hover { color: var(--copper); }
+
+    footer {
+      border-top: 1px solid var(--graphite);
+      padding: 3rem;
+      text-align: center;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-links a {
+      color: var(--silver);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: color 0.3s;
+    }
+
+    .footer-links a:hover { color: var(--amber); }
+
+    .footer-copy {
+      font-size: 0.75rem;
+      color: var(--iron);
+    }
+
+    @media (max-width: 700px) {
+      nav { padding: 1rem 1.5rem; }
+      main { padding: 3rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-logo">
+      <svg viewBox="0 0 100 100" width="32" height="32">
+        <defs>
+          <linearGradient id="nav-ag" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#D4863A"/>
+            <stop offset="100%" style="stop-color:#E8A85C"/>
+          </linearGradient>
+        </defs>
+        <polygon points="50,5 95,50 50,95 5,50" fill="none" stroke="url(#nav-ag)" stroke-width="3"/>
+        <line x1="50" y1="5" x2="50" y2="95" stroke="#3A3A3A" stroke-width="1.5"/>
+        <line x1="5" y1="50" x2="95" y2="50" stroke="#3A3A3A" stroke-width="1.5"/>
+        <circle cx="50" cy="50" r="4" fill="url(#nav-ag)"/>
+      </svg>
+      <div>
+        <div class="nav-logo-text">DREAM</div>
+        <div class="nav-logo-sub">SOFTWARE SOLUTIONS</div>
+      </div>
+    </a>
+    <a href="/" class="nav-back">&larr; Back to Home</a>
+  </nav>
+
+  <main>
+    <div class="thank-you">
+      <svg class="thank-you-icon" width="56" height="56" viewBox="0 0 100 100">
+        <defs>
+          <linearGradient id="ty-ag" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#D4863A"/>
+            <stop offset="100%" style="stop-color:#E8A85C"/>
+          </linearGradient>
+        </defs>
+        <polygon points="50,5 95,50 50,95 5,50" fill="none" stroke="url(#ty-ag)" stroke-width="2.5"/>
+        <path d="M35 50 L45 60 L65 40" fill="none" stroke="url(#ty-ag)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+
+      <h1>Thank you.</h1>
+
+      <div class="thank-you-body">
+        <p>
+          Your message came through. I'll personally review what you've shared and get back
+          to you <strong>within 24 hours</strong> — either with a few clarifying questions or
+          a suggested time to talk through your project together.
+        </p>
+      </div>
+
+      <div class="what-next">
+        <div class="what-next-label">What happens next</div>
+        <p>
+          I read every inquiry myself. If your project is a good fit, we'll schedule a
+          discovery conversation — no cost, no commitment — to dig into what you're trying
+          to solve and whether we're the right people to help. If we're not the right fit,
+          I'll tell you that honestly and point you in a better direction.
+        </p>
+      </div>
+
+      <div class="confidentiality">
+        Everything you shared is treated as confidential. We don't share your
+        information with anyone.
+      </div>
+
+      <a href="/#portfolio" class="back-link">&larr; See our recent work while you wait</a>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </div>
+    <div class="footer-copy">
+      &copy; 2025 Dream Software Solutions LLC. All rights reserved.
+    </div>
+  </footer>
+</body>
+</html>
