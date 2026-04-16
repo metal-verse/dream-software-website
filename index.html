@@ -291,6 +291,26 @@
       box-shadow: 0 8px 20px rgba(212, 134, 58, 0.15);
     }
 
+    .hero-status {
+      margin-top: 1.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--silver);
+      letter-spacing: 1.5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+.hero-status::after {
+      content: '';
+      display: block;
+      width: 100px;
+      height: 1px;
+      background: var(--amber);
+    }
+
     .scroll-indicator {
       position: absolute;
       bottom: 2rem;
@@ -1568,6 +1588,7 @@
         every solution.
       </p>
       <a href="javascript:void(0)" class="hero-cta" onclick="openContactForm()">Start a Conversation</a>
+      <div class="hero-status">Accepting new partnerships for 2026.</div>
     </div>
     <div class="scroll-indicator">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D4863A" stroke-width="2">
